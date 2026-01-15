@@ -12,24 +12,26 @@ struct CELL_FACE
 };
 
 // === 几何与网格 ===
-float Lx = 1.0; // 腔体宽度
-float Ly = 1.0; // 腔体高度
-int ncx = 40;     // cell number in all directions
-int ncy = 40;   
+constexpr float Lx = 1.0; // 腔体宽度
+constexpr float Ly = 1.0; // 腔体高度
+constexpr int ncx = 40;     // cell number in all directions
+constexpr int ncy = 40;   
 
-// === 物理参数 ===
-float Re = 100.0; // 雷诺数
-float rho = 1.0;  // 密度（通常设为1）
-float nu;         // 运动粘度 = U*L / Re
+
 
 // === 边界条件 ===
-float lid_velocity = 1.0; // 顶盖速度（U）
+constexpr float lid_velocity = 1.0; // 顶盖速度（U
+
+// === 物理参数 ===
+constexpr float Re = 100.0; // 雷诺数
+constexpr float rho = 1.0;  // 密度（通常设为1）
+constexpr float nu = lid_velocity * Lx / Re;         // 运动粘度 = U*L / Re
 
 // === 求解控制 ===
-int max_iterations = 10000;
-float continuity_tolerance = 1e-6;
-float momentum_tolerance = 1e-6;
+constexpr int max_iterations = 10000;
+constexpr float continuity_tolerance = 1e-6;
+constexpr float momentum_tolerance = 1e-6;
 
 // === 输出控制 ===
-std::string output_filename = "results.dat";
-int output_interval = 100;
+const std::string output_filename = "results.dat";
+constexpr int output_interval = 100; // 每隔多少步输出一次结果

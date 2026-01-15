@@ -15,6 +15,7 @@ find_package(Boost REQUIRED)
 set (SOURCES
     src/main.cpp
     src/test.cpp
+    src/grid/structuredMesh.cpp
 )
 
 add_executable(test_deps ${SOURCES})

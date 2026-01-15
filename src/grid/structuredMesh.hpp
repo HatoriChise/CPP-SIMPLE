@@ -2,12 +2,13 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <array>
 #include <vector>
 #include <stdexcept>
 #include <fmt/core.h>
-#include <boost/multi_array.hpp>   
+#include <boost/multi_array.hpp>
 
-#include "simulationConfig.hpp"
+#include "../config/simulationConfig.hpp"
 
 class StructuredMesh
 {
@@ -47,7 +48,7 @@ class StructuredMesh
      */
     std::array<float, 3> getMeshSize();
 
-    void printMeshInfo(); // 打印网格信息
+    void saveMeshInfo(); // 打印网格信息
 
 
     inline const std::vector<float>& getCellCentersX() const { return cellCentersX_; }

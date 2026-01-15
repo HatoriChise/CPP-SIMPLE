@@ -3,12 +3,16 @@
 #include <chrono>
 
 #include "src/test.hpp"
+#include "src/grid/structuredMesh.hpp"
 
 int main()
 {
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    test();
+    // test();
+    StructuredMesh mesh;
+    mesh.saveMeshInfo();
+
 
     // end timing
     auto t1 = std::chrono::high_resolution_clock::now();
