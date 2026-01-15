@@ -1,26 +1,18 @@
 // src/main.cpp
-#include <fmt/core.h>
-#include <Eigen/Dense>
-#include <boost/math/constants/constants.hpp>
+#include <fmt/format.h>
+#include <chrono>
 
-#include "utils/formatter4eigen.h"
+#include "src/test.hpp"
 
-int main() {
-    // 使用 fmt 替代 cout
-    fmt::print("🌟 Hello from vcpkg-managed dependencies!\n");
+int main()
+{
+    auto t0 = std::chrono::high_resolution_clock::now();
 
-    // 使用 Eigen
-    Eigen::MatrixXd A = Eigen::MatrixXd::Random(3, 3);
-    Eigen::VectorXd b(3);
-    b << 1, 2, 3;
-    Eigen::VectorXd x = A.colPivHouseholderQr().solve(b);
+    test();
 
-    fmt::print("A = \n{}\n", A);
-    fmt::print("Solution x = [{:.4f}, {:.4f}, {:.4f}]\n", x(0), x(1), x(2));
-
-    // 使用 Boost
-    double pi = boost::math::constants::pi<double>();
-    fmt::print("π ≈ {:.10f}\n", pi);
-
+    // end timing
+    auto t1 = std::chrono::high_resolution_clock::now();
+    using ms = std::chrono::duration<double, std::milli>;
+    fmt::print("Elapsed time: {:.2f} ms\n", std::chrono::duration_cast<ms>(t1 - t0).count());
     return 0;
 }

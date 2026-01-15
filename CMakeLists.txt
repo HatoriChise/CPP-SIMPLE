@@ -12,7 +12,11 @@ find_package(fmt REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 
-file(GLOB SOURCES "src/*.cpp")
+set (SOURCES
+    src/main.cpp
+    src/test.cpp
+)
+
 add_executable(test_deps ${SOURCES})
 
 target_link_libraries(test_deps PRIVATE fmt::fmt Eigen3::Eigen)
