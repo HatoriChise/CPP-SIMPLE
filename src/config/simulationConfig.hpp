@@ -43,8 +43,8 @@ struct BoudaryCondition
 // === 几何与网格 ===
 constexpr float Lx = 1.0; // 腔体宽度
 constexpr float Ly = 1.0; // 腔体高度
-constexpr int ncx = 40;   // cell number in all directions
-constexpr int ncy = 40;
+constexpr int ncx = 10;   // cell number in all directions
+constexpr int ncy = 10;
 
 
 // === 边界条件 ===
@@ -52,9 +52,9 @@ constexpr float lid_velocity = 1.0; // 顶盖速度（U）
 
 // === 物理参数 ===
 constexpr float Re = 100.0;                  // 雷诺数
-constexpr float density = 1.0;                   // 密度（通常设为1）
-constexpr float nu = lid_velocity * Lx / Re; // 运动粘度 = U*L / Re
-constexpr float mu = density * nu;               // 动力粘度 = rho * nu
+constexpr float density = 10.0;                   // 密度（通常设为1）
+constexpr float nu_fluid = lid_velocity * Lx / Re; // 运动粘度 = U*L / Re
+constexpr float mu_fluid = density * nu_fluid;               // 动力粘度 = rho * nu
 constexpr float k_fluid = 0.6;               // 导热率 (W/m·K)
 constexpr float cp_fluid = 1000.0;           // 定压比热 (J/kg·K)
 
@@ -67,6 +67,9 @@ constexpr float momentum_tolerance = 1e-6;
 const std::string output_filename = "results.dat";
 constexpr int output_interval = 100; // 每隔多少步输出一次结果
 
+// === 初始条件 ===
+constexpr float initalTemperature = 273.0; // 初始温度 (K)
+constexpr std::array<float, 2> initalVelocity = {1.0, 1.0};      // 初始速度 (m/s)
 
 // === 边界条件 ===
 const BoudaryCondition boundaryInfo[4] = 

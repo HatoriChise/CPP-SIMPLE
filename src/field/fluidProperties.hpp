@@ -20,12 +20,10 @@ struct FluidValues {
 // 不做边界处理，外部根据需要写入/更新
 class FluidPropertyField {
 public:
-    FluidPropertyField(int ncx, int ncy, const std::string& base_name = "fluid");
+    FluidPropertyField();
 
     // 一次性填充全域常量物性（仍作为场存储，便于未来变物性）
     void fill(float rho, float mu, float k, float cp);
-    // 直接使用 config 中的物性常量进行填充（mu 由 rho*nu 推得）
-    void fill_from_config();
 
     // 访问单元物性，(i, j) -> data[j][i] 映射与 ScalarField 一致
     FluidValues operator()(int i, int j) const;
@@ -42,12 +40,10 @@ public:
 
     int ncx() const { return ncx_; }
     int ncy() const { return ncy_; }
-    const std::string& name() const { return name_; }
 
 private:
     int ncx_{};
     int ncy_{};
-    std::string name_{};
 
     ScalarField rho_; // 密度场
     ScalarField mu_;  // 动力粘度场

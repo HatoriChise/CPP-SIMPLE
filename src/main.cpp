@@ -7,11 +7,10 @@
 
 int main()
 {
+    // start timing
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    // test();
-    StructuredMesh mesh;
-    mesh.saveMeshInfo();
+    test();
 
 
     // end timing

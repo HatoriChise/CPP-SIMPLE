@@ -2,15 +2,20 @@
 
 #include <algorithm>
 
-ScalarField::ScalarField(int ncx, int ncy, const std::string &name)
-    : ncx_(ncx), ncy_(ncy), name_(name), data_(boost::extents[ncy][ncx])
+ScalarField::ScalarField() : ncx_(::ncx), ncy_(::ncy), data_(boost::extents[ncy_][ncx_])
 {
     assert(ncx_ > 0 && ncy_ > 0);
+    fill(initalTemperature); // 默认填充初始温度
+}
+
+ScalarField::ScalarField(int ncx, int ncy, float value) : ncx_(ncx), ncy_(ncy), data_(boost::extents[ncy_][ncx_])
+{
+    assert(ncx_ > 0 && ncy_ > 0);
+    fill(value);
 }
 
 float &ScalarField::operator()(int i, int j)
 {
-    // (i, j) -> data_[j][i]，j 为行(y)，i 为列(x)，保证内层循环 i 时内存连续
     assert(i >= 0 && i < ncx_);
     assert(j >= 0 && j < ncy_);
     return data_[j][i];

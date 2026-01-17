@@ -1,8 +1,10 @@
 #include "vectorField.hpp"
 
-VectorField::VectorField(int ncx, int ncy, const std::string &name)
-    : name_(name), u_(ncx, ncy, name + "_u"), v_(ncx, ncy, name + "_v")
+VectorField::VectorField()
+    : u_(::ncx, ::ncy, initalVelocity[0]),
+      v_(::ncx, ::ncy, initalVelocity[1])
 {
+    // 构造时使用 config 中的网格尺寸与初始速度值
 }
 
 Velocity VectorField::operator()(int i, int j) const

@@ -16,6 +16,10 @@ set (SOURCES
     src/main.cpp
     src/test.cpp
     src/grid/structuredMesh.cpp
+    src/field/scalarField.cpp
+    src/field/vectorField.cpp
+    src/field/boundaryField.cpp
+    src/field/fluidProperties.cpp
 )
 
 add_executable(test_deps ${SOURCES})
