@@ -48,12 +48,6 @@ void ScalarEquation::addSourceTerm()
     // TODO: 将自定义源项场 S 的值映射并累加到 bsrc: bsrc += S(i,j) * volume
 }
 
-void ScalarEquation::addPressureGradient()
-{
-    // TODO: 专门为动量方程设计
-    // direction == 0 (U方向): bsrc += -(p_e - p_w) * dy
-    // direction == 1 (V方向): bsrc += -(p_n - p_s) * dx
-}
 
 void ScalarEquation::applyBoundaries()
 {
