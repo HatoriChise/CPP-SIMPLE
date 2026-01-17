@@ -25,6 +25,8 @@ public:
     // 一次性填充全域常量物性（仍作为场存储，便于未来变物性）
     void fill(float rho, float mu, float k, float cp);
 
+    void updateFluidProperties(); // 根据温度场等更新物性，留空待实现
+
     // 访问单元物性，(i, j) -> data[j][i] 映射与 ScalarField 一致
     FluidValues operator()(int i, int j) const;
 
