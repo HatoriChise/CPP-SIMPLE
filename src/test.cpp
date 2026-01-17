@@ -4,7 +4,7 @@
 
 void test()
 {
-        // 使用 fmt 替代 cout
+    // 使用 fmt 替代 cout
     fmt::print("🌟 Hello from vcpkg-managed dependencies!\n");
 
     // 使用 Eigen

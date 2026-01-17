@@ -42,11 +42,11 @@ class StructuredMesh
     void createBoundaryMesh();
 
     /**
-     * @brief Get the Mesh Size object 对于均匀网格，网格尺寸相同
+     * @brief Get the Mesh Size object
      * 
-     * @return std::array<float, 3> 
+     * @return std::array<float, 2> 
      */
-    std::array<float, 3> getMeshSize();
+    std::array<float, 2> getMeshSize();
 
     void saveMeshInfo(); // 打印网格信息
 

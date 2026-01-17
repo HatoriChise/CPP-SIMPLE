@@ -85,9 +85,9 @@ void StructuredMesh::createBoundaryMesh()
     }
 }
 
-std::array<float, 3> StructuredMesh::getMeshSize()
+std::array<float, 2> StructuredMesh::getMeshSize()
 {
-    return {dx_, dy_, dx_ * dy_};
+    return {dx_, dy_};
 }
 
 void StructuredMesh::saveMeshInfo()
