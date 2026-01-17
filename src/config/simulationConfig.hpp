@@ -52,8 +52,11 @@ constexpr float lid_velocity = 1.0; // 顶盖速度（U）
 
 // === 物理参数 ===
 constexpr float Re = 100.0;                  // 雷诺数
-constexpr float rho = 1.0;                   // 密度（通常设为1）
+constexpr float density = 1.0;                   // 密度（通常设为1）
 constexpr float nu = lid_velocity * Lx / Re; // 运动粘度 = U*L / Re
+constexpr float mu = density * nu;               // 动力粘度 = rho * nu
+constexpr float k_fluid = 0.6;               // 导热率 (W/m·K)
+constexpr float cp_fluid = 1000.0;           // 定压比热 (J/kg·K)
 
 // === 求解控制 ===
 constexpr int max_iterations = 10000;
