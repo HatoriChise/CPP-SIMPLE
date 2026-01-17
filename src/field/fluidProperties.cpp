@@ -22,6 +22,7 @@ void FluidPropertyField::fill(float rho_val, float mu_val, float k_val, float cp
     cp_.fill(cp_val);
 }
 
+
 FluidValues FluidPropertyField::operator()(int i, int j) const
 {
     // 这里 operator() 内部会调用 ScalarField 的 operator()，映射为 [j][i]
@@ -41,4 +42,9 @@ FluidValues FluidPropertyField::operator()(int i, int j) const
     values.alpha = current_k / (current_rho * current_cp);
 
     return values;
+}
+
+void FluidPropertyField::updateFluidProperties()
+{
+    // TODO: 根据温度场等更新物性，当前留空待实现
 }
