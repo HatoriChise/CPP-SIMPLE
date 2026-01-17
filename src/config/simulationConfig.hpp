@@ -48,7 +48,7 @@ constexpr int ncy = 40;
 
 
 // === 边界条件 ===
-constexpr float lid_velocity = 1.0; // 顶盖速度（U
+constexpr float lid_velocity = 1.0; // 顶盖速度（U）
 
 // === 物理参数 ===
 constexpr float Re = 100.0;                  // 雷诺数
