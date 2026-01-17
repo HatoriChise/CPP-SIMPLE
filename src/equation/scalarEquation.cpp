@@ -1,29 +1,35 @@
+// src/equation/scalarEquation.cpp
+
 #include "scalarEquation.hpp"
+
+#include <algorithm>
 
 ScalarEquation::ScalarEquation(StructuredMesh &mesh, ScalarField &scalarField,
                                VectorField &vectorField, BoundaryField &boundaryField,
                                FluidPropertyField &fluidPropertyField)
-    : mesh_(mesh),
-      scalarField_(scalarField),
-      vectorField_(vectorField),
-      boundaryField_(boundaryField),
-      fluidPropertyField_(fluidPropertyField)
+    : mesh_(mesh), scalarField_(scalarField), vectorField_(vectorField),
+      boundaryField_(boundaryField), fluidPropertyField_(fluidPropertyField)
 {
-    // TODO: 1. 根据 mesh 的尺寸 (ncx, ncy) 初始化 coefMatrix_ 的大小
-    // coefMatrix_.resize(boost::extents[mesh_.ncy()][mesh_.ncx()]);
-    
-    // TODO: 2. 执行一次 resetCoefficients() 确保初始状态为零
+    // initialize coefficient matrix size
+    coefMatrix_.resize(boost::extents[ncy][ncx]);
+    resetCoefficients();
 }
 
 ScalarEquation::~ScalarEquation() = default;
 
 void ScalarEquation::resetCoefficients()
 {
-    // TODO: 遍历 coefMatrix_，将所有单元的 aE, aW, aN, aS, aP, bsrc 重置为 0
-    // 提示：这是每一轮 SIMPLE 迭代开始前必须执行的操作
+    // traversal all cells and set coefficients to zero
+    COEF zero{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    for(int j = 0; j < ncy; ++j)
+    {
+        for(int i = 0; i < ncx; ++i)
+        {
+            coefMatrix_[j][i] = zero;
+        }
+    }
 }
 
-// === 核心组装方法 (待实现) ===
 
 void ScalarEquation::addDiffusionTerm()
 {
@@ -45,7 +51,20 @@ void ScalarEquation::addConvectionTerm()
 
 void ScalarEquation::addSourceTerm()
 {
-    // TODO: 将自定义源项场 S 的值映射并累加到 bsrc: bsrc += S(i,j) * volume
+    std::array<float, 2> meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+    float volume = dx * dy;
+
+    float source = sourceTerm; // 从配置中获取源项值
+
+    for(int j = 0; j < ncy; ++j)
+    {
+        for(int i = 0; i < ncx; ++i)
+        {
+            coefMatrix_[j][i].bsrc += source * volume;
+        }
+    }
 }
 
 

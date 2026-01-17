@@ -78,3 +78,5 @@ const BoudaryCondition boundaryInfo[4] =
     {X_MAX, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0},
     {Y_MIN, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0},
     {Y_MAX, WALL, {lid_velocity, 0.0}, DIRICHLET, 273.0, 0.0}};
+
+constexpr float sourceTerm = 0;
