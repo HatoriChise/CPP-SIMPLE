@@ -43,8 +43,8 @@ struct BoudaryCondition
 // === 几何与网格 ===
 constexpr float Lx = 1.0; // 腔体宽度
 constexpr float Ly = 1.0; // 腔体高度
-constexpr int ncx = 10;   // cell number in all directions
-constexpr int ncy = 10;
+constexpr int ncx = 50;   // cell number in all directions
+constexpr int ncy = 50;
 
 
 // === 边界条件 ===
