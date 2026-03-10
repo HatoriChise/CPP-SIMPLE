@@ -45,6 +45,10 @@ private:
 
     int direction_;  // 0=u动量, 1=v动量, -1=标量方程(默认)
 
+    // 计算界面质量通量（当前使用线性插值，后续可升级为Rhie-Chow）
+    // face: 0=东, 1=西, 2=北, 3=南
+    float computeFaceMassFlux(int i, int j, int face) const;
+
 public:
     // constructor
     // direction: 0=u动量方程, 1=v动量方程, -1=标量方程(默认)

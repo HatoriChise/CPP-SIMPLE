@@ -34,6 +34,36 @@ void ScalarEquation::resetCoefficients()
 
 // === 核心组装方法 ===
 
+float ScalarEquation::computeFaceMassFlux(int i, int j, int face) const
+{
+    auto meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+    float rho = fluidPropertyField_(i, j).rho;
+
+    float u_face, v_face;
+    switch (face)
+    {
+    case 0:  // 东侧 (i+1/2, j)
+        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
+        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i + 1, j));
+        return rho * u_face * dy;
+    case 1:  // 西侧 (i-1/2, j)
+        u_face = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
+        v_face = 0.5f * (vectorField_.v()(i - 1, j) + vectorField_.v()(i, j));
+        return rho * u_face * dy;
+    case 2:  // 北侧 (i, j+1/2)
+        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i, j + 1));
+        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
+        return rho * v_face * dx;
+    case 3:  // 南侧 (i, j-1/2)
+        u_face = 0.5f * (vectorField_.u()(i, j - 1) + vectorField_.u()(i, j));
+        v_face = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
+        return rho * v_face * dx;
+    }
+    return 0.0f;
+}
+
 void ScalarEquation::addDiffusionTerm()
 {
     // 获取单元中心坐标和网格尺寸
@@ -74,42 +104,16 @@ void ScalarEquation::addDiffusionTerm()
 
 void ScalarEquation::addConvectionTerm()
 {
-    // 获取网格尺寸
-    auto meshSize = mesh_.getMeshSize();
-    float dx = meshSize[0];
-    float dy = meshSize[1];
-
     // 遍历内部单元
     for (int j = 1; j < ncy - 1; ++j)
     {
         for (int i = 1; i < ncx - 1; ++i)
         {
-            float rho = fluidPropertyField_(i, j).rho;
-
-            // 获取单元中心速度
-            float u_P = vectorField_.u()(i, j);
-            float v_P = vectorField_.v()(i, j);
-
-            // 线性插值计算界面速度和质量通量
-            // 东侧界面 (i+1/2, j)
-            float u_e = 0.5f * (u_P + vectorField_.u()(i + 1, j));
-            float v_e = 0.5f * (v_P + vectorField_.v()(i + 1, j));
-            float F_e = rho * u_e * dy;  // 东侧质量通量
-
-            // 西侧界面 (i-1/2, j)
-            float u_w = 0.5f * (vectorField_.u()(i - 1, j) + u_P);
-            float v_w = 0.5f * (vectorField_.v()(i - 1, j) + v_P);
-            float F_w = rho * u_w * dy;  // 西侧质量通量
-
-            // 北侧界面 (i, j+1/2)
-            float u_n = 0.5f * (u_P + vectorField_.u()(i, j + 1));
-            float v_n = 0.5f * (v_P + vectorField_.v()(i, j + 1));
-            float F_n = rho * v_n * dx;  // 北侧质量通量
-
-            // 南侧界面 (i, j-1/2)
-            float u_s = 0.5f * (vectorField_.u()(i, j - 1) + u_P);
-            float v_s = 0.5f * (vectorField_.v()(i, j - 1) + v_P);
-            float F_s = rho * v_s * dx;  // 南侧质量通量
+            // 计算界面质量通量
+            float F_e = computeFaceMassFlux(i, j, 0);  // 东
+            float F_w = computeFaceMassFlux(i, j, 1);  // 西
+            float F_n = computeFaceMassFlux(i, j, 2);  // 北
+            float F_s = computeFaceMassFlux(i, j, 3);  // 南
 
             // 迎风格式计算对流系数
             coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);
