@@ -43,10 +43,14 @@ private:
 
     boost::multi_array<COEF, 2> coefMatrix_; // coefficients array
 
+    int direction_;  // 0=u动量, 1=v动量, -1=标量方程(默认)
+
 public:
     // constructor
+    // direction: 0=u动量方程, 1=v动量方程, -1=标量方程(默认)
     ScalarEquation(StructuredMesh &mesh, ScalarField &scalarField, VectorField &vectorField,
-                   BoundaryField &boundaryField, FluidPropertyField &fluidPropertyField);
+                   BoundaryField &boundaryField, FluidPropertyField &fluidPropertyField,
+                   int direction = -1);
 
     // destructor
     ~ScalarEquation();

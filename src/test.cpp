@@ -188,6 +188,67 @@ void test_scalar_equation()
     fmt::print("✓ ScalarEquation constructor, resetCoefficients() and addDiffusionTerm() tests completed\n");
 }
 
+void test_simple_algorithm()
+{
+    fmt::print("\n=== Testing SIMPLE Algorithm ===\n");
+
+    // 创建网格
+    StructuredMesh mesh;
+
+    // 创建压力场（初始化为0）
+    ScalarField pressure(ncx, ncy, 0.0f);
+
+    // 创建速度场（初始化为0）
+    VectorField velocity;
+
+    // 创建边界条件和物性场
+    std::array<BoudaryCondition, 4> boundaryInfo;
+    int test_ncx, test_ncy;
+    float test_Lx, test_Ly;
+    setup_test_configuration(boundaryInfo, test_ncx, test_ncy, test_Lx, test_Ly);
+    BoundaryField bc(ncx, ncy, boundaryInfo.data(), 4);
+    FluidPropertyField props;
+
+    // 创建 u 动量方程
+    ScalarField u_field(ncx, ncy, 0.0f);  // u 速度场
+    ScalarEquation u_momentum(mesh, u_field, velocity, bc, props, 0);  // direction=0
+
+    // 组装 u 动量方程
+    u_momentum.resetCoefficients();
+    u_momentum.addDiffusionTerm();
+    u_momentum.addConvectionTerm();
+    u_momentum.addPressureGradient();
+
+    // 打印 u 动量方程系数（内部单元 2,2）
+    int i = 2, j = 2;
+    const auto& coef = u_momentum.getCoefMatrix()[j][i];
+    fmt::print("\nU-momentum coefficients at ({}, {}):\n", i, j);
+    fmt::print("  aE = {:.6f}, aW = {:.6f}\n", coef.aE, coef.aW);
+    fmt::print("  aN = {:.6f}, aS = {:.6f}\n", coef.aN, coef.aS);
+    fmt::print("  aP = {:.6f}\n", coef.aP);
+    fmt::print("  bsrc = {:.6f}\n", coef.bsrc);
+
+    // 创建 v 动量方程
+    ScalarField v_field(ncx, ncy, 0.0f);  // v 速度场
+    ScalarEquation v_momentum(mesh, v_field, velocity, bc, props, 1);  // direction=1
+
+    // 组装 v 动量方程
+    v_momentum.resetCoefficients();
+    v_momentum.addDiffusionTerm();
+    v_momentum.addConvectionTerm();
+    v_momentum.addPressureGradient();
+
+    // 打印 v 动量方程系数
+    const auto& v_coef = v_momentum.getCoefMatrix()[j][i];
+    fmt::print("\nV-momentum coefficients at ({}, {}):\n", i, j);
+    fmt::print("  aE = {:.6f}, aW = {:.6f}\n", v_coef.aE, v_coef.aW);
+    fmt::print("  aN = {:.6f}, aS = {:.6f}\n", v_coef.aN, v_coef.aS);
+    fmt::print("  aP = {:.6f}\n", v_coef.aP);
+    fmt::print("  bsrc = {:.6f}\n", v_coef.bsrc);
+
+    fmt::print("\n✓ SIMPLE algorithm test completed\n");
+}
+
 void test()
 {
     fmt::print("Hello from test()\n");
@@ -196,4 +257,5 @@ void test()
     test_basic_fields();
     test_linear_algebra();
     test_scalar_equation();
+    test_simple_algorithm();
 }

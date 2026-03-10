@@ -2,12 +2,13 @@
 
 ScalarEquation::ScalarEquation(StructuredMesh &mesh, ScalarField &scalarField,
                                VectorField &vectorField, BoundaryField &boundaryField,
-                               FluidPropertyField &fluidPropertyField)
+                               FluidPropertyField &fluidPropertyField, int direction)
     : mesh_(mesh),
       scalarField_(scalarField),
       vectorField_(vectorField),
       boundaryField_(boundaryField),
-      fluidPropertyField_(fluidPropertyField)
+      fluidPropertyField_(fluidPropertyField),
+      direction_(direction)
 {
     // 根据全局网格尺寸 (ncx, ncy) 初始化 coefMatrix_ 的大小
     coefMatrix_.resize(boost::extents[ncy][ncx]);
@@ -73,22 +74,95 @@ void ScalarEquation::addDiffusionTerm()
 
 void ScalarEquation::addConvectionTerm()
 {
-    // TODO: 1. 获取面速度 (Face Velocity) 或通过 Rhie-Chow 计算界面通量
-    // TODO: 2. 根据 scheme (0: Upwind, 1: Central) 计算对流系数
-    //    Upwind 示例: aE_conv = max(-F_e, 0), aW_conv = max(F_w, 0)
-    // TODO: 3. 更新 aE, aW, aN, aS 及其对 aP 的贡献
+    // 获取网格尺寸
+    auto meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+
+    // 遍历内部单元
+    for (int j = 1; j < ncy - 1; ++j)
+    {
+        for (int i = 1; i < ncx - 1; ++i)
+        {
+            float rho = fluidPropertyField_(i, j).rho;
+
+            // 获取单元中心速度
+            float u_P = vectorField_.u()(i, j);
+            float v_P = vectorField_.v()(i, j);
+
+            // 线性插值计算界面速度和质量通量
+            // 东侧界面 (i+1/2, j)
+            float u_e = 0.5f * (u_P + vectorField_.u()(i + 1, j));
+            float v_e = 0.5f * (v_P + vectorField_.v()(i + 1, j));
+            float F_e = rho * u_e * dy;  // 东侧质量通量
+
+            // 西侧界面 (i-1/2, j)
+            float u_w = 0.5f * (vectorField_.u()(i - 1, j) + u_P);
+            float v_w = 0.5f * (vectorField_.v()(i - 1, j) + v_P);
+            float F_w = rho * u_w * dy;  // 西侧质量通量
+
+            // 北侧界面 (i, j+1/2)
+            float u_n = 0.5f * (u_P + vectorField_.u()(i, j + 1));
+            float v_n = 0.5f * (v_P + vectorField_.v()(i, j + 1));
+            float F_n = rho * v_n * dx;  // 北侧质量通量
+
+            // 南侧界面 (i, j-1/2)
+            float u_s = 0.5f * (vectorField_.u()(i, j - 1) + u_P);
+            float v_s = 0.5f * (vectorField_.v()(i, j - 1) + v_P);
+            float F_s = rho * v_s * dx;  // 南侧质量通量
+
+            // 迎风格式计算对流系数
+            coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);
+            coefMatrix_[j][i].aW += std::max(F_w, 0.0f);
+            coefMatrix_[j][i].aN += std::max(-F_n, 0.0f);
+            coefMatrix_[j][i].aS += std::max(F_s, 0.0f);
+
+            // 中心系数贡献（连续性）
+            coefMatrix_[j][i].aP += (F_e - F_w + F_n - F_s);
+        }
+    }
 }
 
 void ScalarEquation::addSourceTerm()
 {
     // TODO: 将自定义源项场 S 的值映射并累加到 bsrc: bsrc += S(i,j) * volume
+    // 针对温度标量方程，S 可以是体积热源项 (W/m^3)，需要乘以单元体积转换为总热量贡献
 }
 
 void ScalarEquation::addPressureGradient()
 {
-    // TODO: 专门为动量方程设计
-    // direction == 0 (U方向): bsrc += -(p_e - p_w) * dy
-    // direction == 1 (V方向): bsrc += -(p_n - p_s) * dx
+    // 仅对动量方程有效
+    if (direction_ < 0) return;
+
+    auto meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+
+    // 遍历内部单元
+    for (int j = 1; j < ncy - 1; ++j)
+    {
+        for (int i = 1; i < ncx - 1; ++i)
+        {
+            float p_P = scalarField_(i, j);
+
+            if (direction_ == 0)  // u动量方程
+            {
+                // 界面压力线性插值
+                float p_e = 0.5f * (p_P + scalarField_(i + 1, j));
+                float p_w = 0.5f * (scalarField_(i - 1, j) + p_P);
+                // 压力梯度源项
+                coefMatrix_[j][i].bsrc -= (p_e - p_w) * dy;
+            }
+            else if (direction_ == 1)  // v动量方程
+            {
+                // 界面压力线性插值
+                float p_n = 0.5f * (p_P + scalarField_(i, j + 1));
+                float p_s = 0.5f * (scalarField_(i, j - 1) + p_P);
+                // 压力梯度源项
+                coefMatrix_[j][i].bsrc -= (p_n - p_s) * dx;
+            }
+        }
+    }
 }
 
 void ScalarEquation::applyBoundaries()

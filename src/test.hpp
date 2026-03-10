@@ -18,3 +18,4 @@
 
 // define test function
 void test();
+void test_simple_algorithm();
