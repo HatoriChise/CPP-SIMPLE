@@ -21,6 +21,7 @@ set (SOURCES
     src/main.cpp
     src/test.cpp
     src/grid/structuredMesh.cpp
+    src/equation/scalarEquation.cpp
     src/field/scalarField.cpp
     src/field/vectorField.cpp
     src/field/boundaryField.cpp

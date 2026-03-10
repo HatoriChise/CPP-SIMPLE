@@ -67,6 +67,8 @@ public:
 
     void applyBoundaries();
 
+    void addPressureGradient();
+
     void setRelaxation(float relaxationFactor);
 
     const boost::multi_array<COEF, 2>& getCoefMatrix() const

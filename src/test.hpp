@@ -14,6 +14,7 @@
 #include "field/vectorField.hpp"
 #include "field/boundaryField.hpp"
 #include "field/fluidProperties.hpp"
+#include "equation/scalarEquation.hpp"
 
 // define test function
 void test();

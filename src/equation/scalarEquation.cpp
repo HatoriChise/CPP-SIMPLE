@@ -9,30 +9,59 @@ ScalarEquation::ScalarEquation(StructuredMesh &mesh, ScalarField &scalarField,
       boundaryField_(boundaryField),
       fluidPropertyField_(fluidPropertyField)
 {
-    // TODO: 1. 根据 mesh 的尺寸 (ncx, ncy) 初始化 coefMatrix_ 的大小
-    // coefMatrix_.resize(boost::extents[mesh_.ncy()][mesh_.ncx()]);
-    
-    // TODO: 2. 执行一次 resetCoefficients() 确保初始状态为零
+    // 根据全局网格尺寸 (ncx, ncy) 初始化 coefMatrix_ 的大小
+    coefMatrix_.resize(boost::extents[ncy][ncx]);
+
+    // 执行一次 resetCoefficients() 确保初始状态为零
+    resetCoefficients();
 }
 
 ScalarEquation::~ScalarEquation() = default;
 
 void ScalarEquation::resetCoefficients()
 {
-    // TODO: 遍历 coefMatrix_，将所有单元的 aE, aW, aN, aS, aP, bsrc 重置为 0
-    // 提示：这是每一轮 SIMPLE 迭代开始前必须执行的操作
+    // 遍历 coefMatrix_，将所有单元的 aE, aW, aN, aS, aP, bsrc 重置为 0
+    // 这是每一轮 SIMPLE 迭代开始前必须执行的操作
+    for (int j = 0; j < ncy; ++j)
+    {
+        for (int i = 0; i < ncx; ++i)
+        {
+            coefMatrix_[j][i] = COEF{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        }
+    }
 }
 
-// === 核心组装方法 (待实现) ===
+// === 核心组装方法 ===
 
 void ScalarEquation::addDiffusionTerm()
 {
-    // TODO: 1. 获取网格几何信息 (dx, dy) 和物性 (Gamma = mu 或 k)
-    // TODO: 2. 遍历内部单元 (1 to n-1)，计算界面扩散通量：
-    //    aE = Gamma_e * dy / dx_Pe
-    //    aW = Gamma_w * dy / dx_Pw
-    //    ... 同理计算 aN, aS
-    // TODO: 3. 累加到 aP: aP += (aE + aW + aN + aS)
+    // 获取网格几何信息 (dx, dy) 和物性 (Gamma = mu 或 k)
+    auto meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+
+    // 遍历内部单元 (1 to n-1)，计算界面扩散通量
+    for (int j = 1; j < ncy - 1; ++j)
+    {
+        for (int i = 1; i < ncx - 1; ++i)
+        {
+            // 获取当前单元的物性（使用粘度作为Gamma的示例）
+            float Gamma = fluidPropertyField_(i, j).mu;
+
+            // 计算扩散系数
+            float aE = Gamma * dy / dx;  // 东侧
+            float aW = Gamma * dy / dx;  // 西侧
+            float aN = Gamma * dx / dy;  // 北侧
+            float aS = Gamma * dx / dy;  // 南侧
+
+            // 累加到系数
+            coefMatrix_[j][i].aE += aE;
+            coefMatrix_[j][i].aW += aW;
+            coefMatrix_[j][i].aN += aN;
+            coefMatrix_[j][i].aS += aS;
+            coefMatrix_[j][i].aP += (aE + aW + aN + aS);
+        }
+    }
 }
 
 void ScalarEquation::addConvectionTerm()
