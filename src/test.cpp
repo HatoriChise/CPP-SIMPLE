@@ -217,7 +217,7 @@ void test_simple_algorithm()
     u_momentum.resetCoefficients();
     u_momentum.addDiffusionTerm();
     u_momentum.addConvectionTerm();
-    u_momentum.addPressureGradient();
+    u_momentum.addPressureGradient(pressure);  // 传入压力场
 
     // 打印 u 动量方程系数（内部单元 2,2）
     int i = 2, j = 2;
@@ -236,7 +236,7 @@ void test_simple_algorithm()
     v_momentum.resetCoefficients();
     v_momentum.addDiffusionTerm();
     v_momentum.addConvectionTerm();
-    v_momentum.addPressureGradient();
+    v_momentum.addPressureGradient(pressure);  // 传入压力场
 
     // 打印 v 动量方程系数
     const auto& v_coef = v_momentum.getCoefMatrix()[j][i];

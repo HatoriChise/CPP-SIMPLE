@@ -71,7 +71,8 @@ public:
 
     void applyBoundaries();
 
-    void addPressureGradient();
+    // 添加压力梯度源项，需要传入压力场
+    void addPressureGradient(const ScalarField& pressure);
 
     void setRelaxation(float relaxationFactor);
 

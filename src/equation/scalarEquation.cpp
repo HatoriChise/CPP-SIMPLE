@@ -129,7 +129,7 @@ void ScalarEquation::addSourceTerm()
     // 针对温度标量方程，S 可以是体积热源项 (W/m^3)，需要乘以单元体积转换为总热量贡献
 }
 
-void ScalarEquation::addPressureGradient()
+void ScalarEquation::addPressureGradient(const ScalarField& pressure)
 {
     // 仅对动量方程有效
     if (direction_ < 0) return;
@@ -143,21 +143,21 @@ void ScalarEquation::addPressureGradient()
     {
         for (int i = 1; i < ncx - 1; ++i)
         {
-            float p_P = scalarField_(i, j);
+            float p_P = pressure(i, j);
 
             if (direction_ == 0)  // u动量方程
             {
                 // 界面压力线性插值
-                float p_e = 0.5f * (p_P + scalarField_(i + 1, j));
-                float p_w = 0.5f * (scalarField_(i - 1, j) + p_P);
+                float p_e = 0.5f * (p_P + pressure(i + 1, j));
+                float p_w = 0.5f * (pressure(i - 1, j) + p_P);
                 // 压力梯度源项
                 coefMatrix_[j][i].bsrc -= (p_e - p_w) * dy;
             }
             else if (direction_ == 1)  // v动量方程
             {
                 // 界面压力线性插值
-                float p_n = 0.5f * (p_P + scalarField_(i, j + 1));
-                float p_s = 0.5f * (scalarField_(i, j - 1) + p_P);
+                float p_n = 0.5f * (p_P + pressure(i, j + 1));
+                float p_s = 0.5f * (pressure(i, j - 1) + p_P);
                 // 压力梯度源项
                 coefMatrix_[j][i].bsrc -= (p_n - p_s) * dx;
             }
