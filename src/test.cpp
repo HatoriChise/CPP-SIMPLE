@@ -100,16 +100,23 @@ bool test_scalar_equation_add_diffusion(ScalarEquation& eq, StructuredMesh& mesh
     int i = 2, j = 2;
     const auto& coef = coefMatrix[j][i];
 
-    // 计算理论值
+    // 计算理论值（使用单元中心距离）
+    const auto& xc = mesh.getCellCentersX();
+    const auto& yc = mesh.getCellCentersY();
     auto meshSize = mesh.getMeshSize();
     float dx = meshSize[0];
     float dy = meshSize[1];
-    float Gamma = props(2, 2).mu;  // 使用物性场中的粘度
+    float mu = props(2, 2).mu;
 
-    float expected_aE = Gamma * dy / dx;
-    float expected_aW = Gamma * dy / dx;
-    float expected_aN = Gamma * dx / dy;
-    float expected_aS = Gamma * dx / dy;
+    float dx_PE = xc[i + 1] - xc[i];
+    float dx_WP = xc[i] - xc[i - 1];
+    float dy_PN = yc[j + 1] - yc[j];
+    float dy_SP = yc[j] - yc[j - 1];
+
+    float expected_aE = mu * dy / dx_PE;
+    float expected_aW = mu * dy / dx_WP;
+    float expected_aN = mu * dx / dy_PN;
+    float expected_aS = mu * dx / dy_SP;
     float expected_aP = expected_aE + expected_aW + expected_aN + expected_aS;
 
     // 检查系数是否接近理论值（考虑浮点精度）

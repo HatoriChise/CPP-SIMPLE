@@ -35,26 +35,33 @@ void ScalarEquation::resetCoefficients()
 
 void ScalarEquation::addDiffusionTerm()
 {
-    // 获取网格几何信息 (dx, dy) 和物性 (Gamma = mu 或 k)
+    // 获取单元中心坐标和网格尺寸
+    const auto& xc = mesh_.getCellCentersX();
+    const auto& yc = mesh_.getCellCentersY();
     auto meshSize = mesh_.getMeshSize();
-    float dx = meshSize[0];
-    float dy = meshSize[1];
+    float dx = meshSize[0];  // x方向单元尺寸（用于北/南面面积）
+    float dy = meshSize[1];  // y方向单元尺寸（用于东/西面面积）
 
-    // 遍历内部单元 (1 to n-1)，计算界面扩散通量
+    // 遍历内部单元
     for (int j = 1; j < ncy - 1; ++j)
     {
         for (int i = 1; i < ncx - 1; ++i)
         {
-            // 获取当前单元的物性（使用粘度作为Gamma的示例）
-            float Gamma = fluidPropertyField_(i, j).mu;
+            float mu = fluidPropertyField_(i, j).mu;
 
-            // 计算扩散系数
-            float aE = Gamma * dy / dx;  // 东侧
-            float aW = Gamma * dy / dx;  // 西侧
-            float aN = Gamma * dx / dy;  // 北侧
-            float aS = Gamma * dx / dy;  // 南侧
+            // 计算相邻单元中心距离
+            float dx_PE = xc[i + 1] - xc[i];  // P到E的距离
+            float dx_WP = xc[i] - xc[i - 1];  // W到P的距离
+            float dy_PN = yc[j + 1] - yc[j];  // P到N的距离
+            float dy_SP = yc[j] - yc[j - 1];  // S到P的距离
 
-            // 累加到系数
+            // 扩散系数: a = mu * (面积 / 距离)
+            float aE = mu * dy / dx_PE;
+            float aW = mu * dy / dx_WP;
+            float aN = mu * dx / dy_PN;
+            float aS = mu * dx / dy_SP;
+
+            // 累加到系数矩阵
             coefMatrix_[j][i].aE += aE;
             coefMatrix_[j][i].aW += aW;
             coefMatrix_[j][i].aN += aN;
