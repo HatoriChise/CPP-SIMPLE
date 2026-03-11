@@ -47,7 +47,7 @@ private:
 
     // 计算界面质量通量（当前使用线性插值，后续可升级为Rhie-Chow）
     // face: 0=东, 1=西, 2=北, 3=南
-    float computeFaceMassFlux(int i, int j, int face) const;
+    float computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure = nullptr) const;
 
 public:
     // constructor
@@ -67,7 +67,7 @@ public:
      */
     void resetCoefficients();
 
-    void addConvectionTerm();
+    void addConvectionTerm(const ScalarField* pressure = nullptr);
 
     void addDiffusionTerm();
 

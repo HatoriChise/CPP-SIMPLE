@@ -34,34 +34,64 @@ void ScalarEquation::resetCoefficients()
 
 // === 核心组装方法 ===
 
-float ScalarEquation::computeFaceMassFlux(int i, int j, int face) const
+float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure) const
 {
     auto meshSize = mesh_.getMeshSize();
     float dx = meshSize[0];
     float dy = meshSize[1];
     float rho = fluidPropertyField_(i, j).rho;
 
-    float u_face, v_face;
+    float u_face = 0.0f, v_face = 0.0f, area = 0.0f;
+    float dp = 0.0f;  // 压力差（用于 Rhie-Chow 修正）
+
     switch (face)
     {
     case 0:  // 东侧 (i+1/2, j)
         u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
         v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i + 1, j));
-        return rho * u_face * dy;
+        area = dy;
+        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i + 1, j);  // p_P - p_E
+        break;
     case 1:  // 西侧 (i-1/2, j)
         u_face = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
         v_face = 0.5f * (vectorField_.v()(i - 1, j) + vectorField_.v()(i, j));
-        return rho * u_face * dy;
+        area = dy;
+        if (pressure) dp = (*pressure)(i - 1, j) - (*pressure)(i, j);  // p_W - p_P
+        break;
     case 2:  // 北侧 (i, j+1/2)
         u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i, j + 1));
         v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
-        return rho * v_face * dx;
+        area = dx;
+        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i, j + 1);  // p_P - p_N
+        break;
     case 3:  // 南侧 (i, j-1/2)
         u_face = 0.5f * (vectorField_.u()(i, j - 1) + vectorField_.u()(i, j));
         v_face = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
-        return rho * v_face * dx;
+        area = dx;
+        if (pressure) dp = (*pressure)(i, j - 1) - (*pressure)(i, j);  // p_S - p_P
+        break;
     }
-    return 0.0f;
+
+    // Rhie-Chow 修正（如果提供了压力场且 aP>0）
+    if (pressure != nullptr && coefMatrix_[j][i].aP > 0.0f)
+    {
+        float d = area / coefMatrix_[j][i].aP;  // 动量系数倒数
+        // 根据界面方向修正对应速度分量
+        if (face == 0 || face == 1)  // 东/西界面，修正 u
+        {
+            u_face += d * dp;
+        }
+        else  // 北/南界面，修正 v
+        {
+            v_face += d * dp;
+        }
+    }
+
+    // 返回质量通量
+    if (face == 0 || face == 1)
+        return rho * u_face * area;
+    else
+        return rho * v_face * area;
 }
 
 void ScalarEquation::addDiffusionTerm()
@@ -102,7 +132,7 @@ void ScalarEquation::addDiffusionTerm()
     }
 }
 
-void ScalarEquation::addConvectionTerm()
+void ScalarEquation::addConvectionTerm(const ScalarField* pressure)
 {
     // 遍历内部单元
     for (int j = 1; j < ncy - 1; ++j)
