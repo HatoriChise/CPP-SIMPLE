@@ -110,10 +110,10 @@ void ScalarEquation::addConvectionTerm()
         for (int i = 1; i < ncx - 1; ++i)
         {
             // 计算界面质量通量
-            float F_e = computeFaceMassFlux(i, j, 0);  // 东
-            float F_w = computeFaceMassFlux(i, j, 1);  // 西
-            float F_n = computeFaceMassFlux(i, j, 2);  // 北
-            float F_s = computeFaceMassFlux(i, j, 3);  // 南
+            float F_e = computeFaceMassFlux(i, j, 0);  // 东 East
+            float F_w = computeFaceMassFlux(i, j, 1);  // 西 West
+            float F_n = computeFaceMassFlux(i, j, 2);  // 北 North
+            float F_s = computeFaceMassFlux(i, j, 3);  // 南 South
 
             // 迎风格式计算对流系数
             coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);
