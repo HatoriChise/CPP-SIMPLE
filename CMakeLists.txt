@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # 关键修正1：显式设置CMP0167策略，消除Boost查找警告（适配新版CMake）
-cmake_policy(SET CMP0167 NEW)
 
 # 关键修正2：vcpkg库均加CONFIG关键字，指定Boost依赖组件（multi_array/math为项目必需）
 find_package(fmt CONFIG REQUIRED)          # 显式CONFIG，适配vcpkg

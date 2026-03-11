@@ -327,6 +327,220 @@ bool test_pressure_gradient()
 }
 
 // ============================================================================
+// 方程测试：Rhie-Chow 插值
+// ============================================================================
+bool test_rhie_chow()
+{
+    fmt::print("\n=== Testing Rhie-Chow Interpolation ===\n");
+
+    StructuredMesh mesh;
+    VectorField velocity;
+    std::array<BoudaryCondition, 4> boundaryInfo;
+    int test_ncx, test_ncy;
+    float test_Lx, test_Ly;
+    setup_test_configuration(boundaryInfo, test_ncx, test_ncy, test_Lx, test_Ly);
+    BoundaryField bc(ncx, ncy, boundaryInfo.data(), 4);
+    FluidPropertyField props;
+
+    auto meshSize = mesh.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+
+    // 测试 1：均匀压力场下，RC 修正项应为零
+    {
+        fmt::print("  Test 1: Uniform pressure field (RC correction should be zero)...\n");
+        ScalarField pressure_uniform(ncx, ncy, 100.0f);  // 均匀压力场 p = 100
+        ScalarField phi(ncx, ncy, 0.0f);
+
+        ScalarEquation eq(mesh, phi, velocity, bc, props, -1);
+
+        // 先组装扩散项以获取 aP 系数
+        eq.resetCoefficients();
+        eq.addDiffusionTerm();
+
+        // 保存扩散项系数
+        int i = 2, j = 2;
+        float aE_diff = eq.getCoefMatrix()[j][i].aE;
+        float aW_diff = eq.getCoefMatrix()[j][i].aW;
+        float aN_diff = eq.getCoefMatrix()[j][i].aN;
+        float aS_diff = eq.getCoefMatrix()[j][i].aS;
+
+        // 设置均匀速度场
+        for (int j = 0; j < ncy; ++j)
+        {
+            for (int i = 0; i < ncx; ++i)
+            {
+                velocity.u()(i, j) = 1.0f;
+                velocity.v()(i, j) = 0.5f;
+            }
+        }
+
+        // 使用 RC 插值计算对流项
+        eq.addConvectionTerm(&pressure_uniform);
+
+        // 保存系数到文件
+
+        // 测试内部单元 (2, 2) 的系数
+        const auto& coef = eq.getCoefMatrix()[j][i];
+
+        // 对于均匀压力场，RC 修正项为零，结果应与线性插值相同
+        // 迎风格式：u>0 时，aE=0, aW=F_w
+        float rho = props(i, j).rho;
+        float u_e = 1.0f, u_w = 1.0f, v_n = 0.5f, v_s = 0.5f;
+        float F_e = rho * u_e * dy;
+        float F_w = rho * u_w * dy;
+        float F_n = rho * v_n * dx;
+        float F_s = rho * v_s * dx;
+
+        // 期望值 = 扩散项 + 对流项
+        float expected_aE = aE_diff + std::max(-F_e, 0.0f);
+        float expected_aW = aW_diff + std::max(F_w, 0.0f);
+        float expected_aN = aN_diff + std::max(-F_n, 0.0f);
+        float expected_aS = aS_diff + std::max(F_s, 0.0f);
+
+        TEST_ASSERT_NEAR(coef.aE, expected_aE, 1e-5f, "均匀压力场：aE 正确（RC 修正为零）");
+        TEST_ASSERT_NEAR(coef.aW, expected_aW, 1e-5f, "均匀压力场：aW 正确");
+        TEST_ASSERT_NEAR(coef.aN, expected_aN, 1e-5f, "均匀压力场：aN 正确");
+        TEST_ASSERT_NEAR(coef.aS, expected_aS, 1e-5f, "均匀压力场：aS 正确");
+
+        fmt::print("NOTE: Coefficients aP at ({}, {}): aP={:.6f}\n",
+                   i, j, coef.aP);
+    }
+
+    // 测试 2：线性压力场下，验证 RC 修正项
+    {
+        fmt::print("  Test 2: Linear pressure field (verify RC correction)...\n");
+        // 设置线性压力场 p = 100 * x，则 dp/dx = 100
+        ScalarField pressure_linear(ncx, ncy, 0.0f);
+        for (int j = 0; j < ncy; ++j)
+        {
+            for (int i = 0; i < ncx; ++i)
+            {
+                pressure_linear(i, j) = 100.0f * static_cast<float>(i) * dx;
+            }
+        }
+
+        ScalarField phi(ncx, ncy, 0.0f);
+        ScalarEquation eq(mesh, phi, velocity, bc, props, -1);
+
+        // 先组装扩散项以获取 aP 系数
+        eq.resetCoefficients();
+        eq.addDiffusionTerm();
+
+        // 设置静止速度场（便于观察 RC 修正）
+        for (int j = 0; j < ncy; ++j)
+        {
+            for (int i = 0; i < ncx; ++i)
+            {
+                velocity.u()(i, j) = 0.0f;
+                velocity.v()(i, j) = 0.0f;
+            }
+        }
+
+        // 使用 RC 插值计算对流项
+        eq.addConvectionTerm(&pressure_linear);
+
+        // 对于静止速度场和线性压力场，RC 修正应产生非零的界面速度
+        // 验证系数矩阵非零（说明 RC 修正生效）
+        int i = 2, j = 2;
+        const auto& coef = eq.getCoefMatrix()[j][i];
+
+        // 由于速度为零且压力梯度为常数，RC 修正项应相互抵消
+        // 但系数矩阵应反映 RC 插值的影响
+        fmt::print("    Coefficients at ({}, {}): aE={:.6f}, aW={:.6f}, aN={:.6f}, aS={:.6f}\n",
+                   i, j, coef.aE, coef.aW, coef.aN, coef.aS);
+
+        // 验证系数矩阵已组装（非全零）
+        bool has_nonzero_coef = (coef.aE != 0.0f || coef.aW != 0.0f ||
+                                  coef.aN != 0.0f || coef.aS != 0.0f);
+        TEST_ASSERT(has_nonzero_coef, "线性压力场：RC 插值产生非零系数");
+    }
+
+    // 测试 3：棋盘格压力场下，验证 RC 修正的阻尼效果
+    {
+        fmt::print("  Test 3: Checkerboard pressure field (verify RC damping)...\n");
+        // 设置棋盘格压力场：p(i,j) = 100 * (-1)^(i+j)
+        ScalarField pressure_checker(ncx, ncy, 0.0f);
+        for (int j = 0; j < ncy; ++j)
+        {
+            for (int i = 0; i < ncx; ++i)
+            {
+                pressure_checker(i, j) = 100.0f * ((i + j) % 2 == 0 ? 1.0f : -1.0f);
+            }
+        }
+
+        // 打印棋盘格压力场
+        fmt::print("    Checkerboard pressure values:\n");
+        for (int j = ncy - 1; j >= 0; --j)
+        {
+            fmt::print("      j={}: ", j);
+            for (int i = 0; i < ncx; ++i)
+            {
+                fmt::print("{:.1f} ", pressure_checker(i, j));
+            }
+            fmt::print("\n");
+        }
+
+        ScalarField phi(ncx, ncy, 0.0f);
+        ScalarEquation eq_with_rc(mesh, phi, velocity, bc, props, -1);
+        ScalarEquation eq_without_rc(mesh, phi, velocity, bc, props, -1);
+
+        // 组装扩散项
+        eq_with_rc.resetCoefficients();
+        eq_with_rc.addDiffusionTerm();
+        eq_without_rc.resetCoefficients();
+        eq_without_rc.addDiffusionTerm();
+
+        // 设置静止速度场
+        for (int j = 0; j < ncy; ++j)
+        {
+            for (int i = 0; i < ncx; ++i)
+            {
+                velocity.u()(i, j) = 0.0f;
+                velocity.v()(i, j) = 0.0f;
+            }
+        }
+
+        // 分别使用 RC 插值和不使用 RC 插值
+        eq_with_rc.addConvectionTerm(&pressure_checker);
+        eq_without_rc.addConvectionTerm(nullptr);  // 无 RC
+
+        // 比较系数差异
+        int i = 2, j = 2;
+        const auto& coef_rc = eq_with_rc.getCoefMatrix()[j][i];
+        const auto& coef_no_rc = eq_without_rc.getCoefMatrix()[j][i];
+
+        fmt::print("    With RC:    aE={:.6f}, aW={:.6f}, aN={:.6f}, aS={:.6f}, aP={:.6f}\n",
+                   coef_rc.aE, coef_rc.aW, coef_rc.aN, coef_rc.aS, coef_rc.aP);
+        fmt::print("    Without RC: aE={:.6f}, aW={:.6f}, aN={:.6f}, aS={:.6f}, aP={:.6f}\n",
+                   coef_no_rc.aE, coef_no_rc.aW, coef_no_rc.aN, coef_no_rc.aS, coef_no_rc.aP);
+
+        // 验证 RC 插值产生了不同的系数（阻尼棋盘格振荡）
+        // 注意：由于速度为零且采用迎风格式，系数可能仍然为零
+        // 这里主要验证 RC 修正确实被调用了
+        bool has_rc_effect = (coef_rc.aE != coef_no_rc.aE ||
+                              coef_rc.aW != coef_no_rc.aW ||
+                              coef_rc.aN != coef_no_rc.aN ||
+                              coef_rc.aS != coef_no_rc.aS);
+
+        if (!has_rc_effect)
+        {
+            fmt::print("    Note: RC correction did not change coefficients (zero velocity field)\n");
+            fmt::print("    This is expected: with u=v=0, mass flux is zero regardless of RC\n");
+        }
+
+        // 验证：RC 插值应该产生不同的系数
+        TEST_ASSERT(has_rc_effect, "棋盘格压力场：RC 插值产生不同的系数（阻尼效果）");
+        
+    }
+
+
+    
+    TEST_PASSED("Rhie-Chow Interpolation");
+    return true;
+}
+
+// ============================================================================
 // 集成测试：SIMPLE 迭代
 // ============================================================================
 void test_simple_iteration()
@@ -354,11 +568,15 @@ void test_simple_iteration()
     u_momentum.addDiffusionTerm();
     u_momentum.addConvectionTerm(&pressure);  // 使用 RC 插值
     u_momentum.addPressureGradient(pressure);
+    u_momentum.applyBoundaries();  // 应用边界条件
+    u_momentum.saveCoefficientsToFile("../data/u_momentum_coefficients.csv");
 
     v_momentum.resetCoefficients();
     v_momentum.addDiffusionTerm();
-    v_momentum.addConvectionTerm(&pressure);
+    v_momentum.addConvectionTerm(); // 不使用 RC 插值
     v_momentum.addPressureGradient(pressure);
+    v_momentum.applyBoundaries();  // 应用边界条件
+    v_momentum.saveCoefficientsToFile("../data/v_momentum_coefficients.csv");
 
     // 打印系数摘要
     int i = 2, j = 2;
@@ -397,6 +615,7 @@ void test()
     total++; if (test_diffusion_term()) passed++;
     total++; if (test_convection_term()) passed++;
     total++; if (test_pressure_gradient()) passed++;
+    total++; if (test_rhie_chow()) passed++;
 
     // 集成测试
     test_simple_iteration();

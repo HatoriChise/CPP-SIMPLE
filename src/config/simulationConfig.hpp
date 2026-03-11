@@ -38,11 +38,15 @@ struct BoudaryCondition
     BOUNDARY_TYPE_T temperatureType;
     float TemperatureValue;
     float heatFluxValue;
+    
+    // 压力边界条件
+    BOUNDARY_TYPE_T pressureType;  // DIRICHLET 或 NEUMANN
+    float pressureValue;           // Dirichlet 时的压力值
 };
 
 // === 几何与网格 ===
-constexpr float Lx = 1.0; // 腔体宽度
-constexpr float Ly = 1.0; // 腔体高度
+constexpr float Lx = 10.0; // 腔体宽度
+constexpr float Ly = 10.0; // 腔体高度
 constexpr int ncx = 5;   // cell number in all directions
 constexpr int ncy = 5;
 
@@ -72,9 +76,10 @@ constexpr float initalTemperature = 273.0; // 初始温度 (K)
 constexpr std::array<float, 2> initalVelocity = {0, 0};      // 初始速度 (m/s)
 
 // === 边界条件 ===
-const BoudaryCondition boundaryInfo[4] = 
+const BoudaryCondition boundaryInfo[4] =
 {
-    {X_MIN, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0},
-    {X_MAX, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0},
-    {Y_MIN, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0},
-    {Y_MAX, WALL, {lid_velocity, 0.0}, DIRICHLET, 273.0, 0.0}};
+    {X_MIN, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0, NEUMANN, 0.0},  // 西侧：速度壁面，压力 Neumann
+    {X_MAX, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0, NEUMANN, 0.0},  // 东侧：速度壁面，压力 Neumann
+    {Y_MIN, WALL, {0.0, 0.0}, DIRICHLET, 273.0, 0.0, NEUMANN, 0.0},  // 南侧：速度壁面，压力 Neumann
+    {Y_MAX, WALL, {lid_velocity, 0.0}, DIRICHLET, 273.0, 0.0, NEUMANN, 0.0}  // 北侧：顶盖移动壁面，压力 Neumann
+};

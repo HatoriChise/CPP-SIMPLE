@@ -6,13 +6,29 @@
 
 ## Rhie-Chow 公式
 
-$$u_e = \frac{1}{2}(u_P + u_E) + \frac{dy}{a_P}(p_P - p_E)$$
+这里是纯数学推导：定义已知量（基于动量方程）我们在单元中心 $P$ 和 $E$ 的动量方程定义如下：
 
-其中：
-- $\bar{u}_e = \frac{1}{2}(u_P + u_E)$：线性插值速度
-- $d_e = \frac{A_e}{a_P}$：界面动量系数倒数
-- $A_e$：界面面积（东侧为 dy，北侧为 dx）
-- $a_P$：动量方程中心系数
+$$u_P=\hat{u}_P-d_P\left( \frac{\partial p}{\partial x} \right) _P\Longrightarrow \hat{u}_P=u_P+d_P\left( \frac{\partial p}{\partial x} \right) _P
+\\
+u_E=\hat{u}_E-d_E\left( \frac{\partial p}{\partial x} \right) _E\Longrightarrow \hat{u}_E=u_E+d_E\left( \frac{\partial p}{\partial x} \right) _E$$
+
+其中 $d_P = \frac{V_P}{a_P^P}$，$d_E = \frac{V_E}{a_P^E}$。
+
+对 $\hat{u}$ 进行线性插值我们假设界面 $e$ 处的伪速度 $\hat{u}_e$ 可以通过 $P$ 和 $E$ 处的伪速度进行加权平均得到（设权值为 $\alpha$，对于均匀网格 $\alpha=0.5$）：
+
+$$\hat{u}_e = \alpha \hat{u}_P + (1-\alpha) \hat{u}_E$$
+
+代入定义式（消除 $\hat{u}$ 的过程）将第 1 步中的 $\hat{u}_P$ 和 $\hat{u}_E$ 的表达式代入上式：$$\hat{u}_e = \alpha \left[ u_P + d_P \left( \frac{\partial p}{\partial x} \right)_P \right] + (1-\alpha) \left[ u_E + d_E \left( \frac{\partial p}{\partial x} \right)_E \right]$$根据界面速度的定义（界面同样满足动量平衡）：
+
+$$u_e = \hat{u}_e - d_e \left( \frac{\partial p}{\partial x} \right)_e$$现在，把刚才展开的 $\hat{u}_e$ 代入：$$u_e = \underbrace{\left\{ \alpha u_P + (1-\alpha) u_E \right\}}_{\text{线性插值速度 } \overline{u}_e} + \underbrace{\left\{ \alpha d_P (\nabla p)_P + (1-\alpha) d_E (\nabla p)_E - d_e (\nabla p)_e \right\}}_{\text{Rhie-Chow 修正项}}$$
+
+总结公式最终，你只需要在代码中实现：
+
+$$u_e=\frac{1}{2}\left( u_P+u_E \right) +\frac{1}{2}d_P\left( \frac{\partial p}{\partial x} \right) _P+\frac{1}{2}d_E\left( \frac{\partial p}{\partial x} \right) _E-d_e\left( \frac{\partial p}{\partial x} \right) _e
+\\
+d_e=\frac{1}{2}\left( d_P+d_E \right) 
+\\
+\left( \frac{\partial p}{\partial x} \right) _e=\left( p_P-p_E \right) $$
 
 ## 修改文件
 
@@ -21,116 +37,9 @@ $$u_e = \frac{1}{2}(u_P + u_E) + \frac{dy}{a_P}(p_P - p_E)$$
 
 ## 实现方案
 
-### 1. 修改方法签名（hpp）
 
-```cpp
-// 计算界面质量通量（使用Rhie-Chow插值）
-// face: 0=东, 1=西, 2=北, 3=南
-// pressure: 压力场指针，若为nullptr则使用线性插值
-float computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure) const;
+### 更新测试代码
 
-void addConvectionTerm(const ScalarField* pressure = nullptr);
-```
-
-### 2. 实现 Rhie-Chow 插值（cpp）
-
-```cpp
-float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure) const
-{
-    auto meshSize = mesh_.getMeshSize();
-    float dx = meshSize[0];
-    float dy = meshSize[1];
-    float rho = fluidPropertyField_(i, j).rho;
-
-    float u_face, v_face, area;
-    float dp = 0.0f;  // 压力差
-    
-    switch (face)
-    {
-    case 0:  // 东侧 (i+1/2, j)
-        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
-        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i + 1, j));
-        area = dy;
-        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i + 1, j);  // p_P - p_E
-        break;
-    case 1:  // 西侧 (i-1/2, j)
-        u_face = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
-        v_face = 0.5f * (vectorField_.v()(i - 1, j) + vectorField_.v()(i, j));
-        area = dy;
-        if (pressure) dp = (*pressure)(i - 1, j) - (*pressure)(i, j);  // p_W - p_P
-        break;
-    case 2:  // 北侧 (i, j+1/2)
-        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i, j + 1));
-        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
-        area = dx;
-        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i, j + 1);  // p_P - p_N
-        break;
-    case 3:  // 南侧 (i, j-1/2)
-        u_face = 0.5f * (vectorField_.u()(i, j - 1) + vectorField_.u()(i, j));
-        v_face = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
-        area = dx;
-        if (pressure) dp = (*pressure)(i, j - 1) - (*pressure)(i, j);  // p_S - p_P
-        break;
-    default:
-        return 0.0f;
-    }
-
-    // Rhie-Chow 修正
-    if (pressure != nullptr && coefMatrix_[j][i].aP > 0.0f)
-    {
-        float d = area / coefMatrix_[j][i].aP;  // 动量系数倒数
-        // 根据界面方向修正对应速度分量
-        if (face == 0 || face == 1)  // 东/西界面，修正 u
-        {
-            u_face += d * dp;
-        }
-        else  // 北/南界面，修正 v
-        {
-            v_face += d * dp;
-        }
-    }
-
-    // 返回质量通量
-    if (face == 0 || face == 1)
-        return rho * u_face * area;
-    else
-        return rho * v_face * area;
-}
-```
-
-### 3. 更新 addConvectionTerm
-
-```cpp
-void ScalarEquation::addConvectionTerm(const ScalarField* pressure)
-{
-    for (int j = 1; j < ncy - 1; ++j)
-    {
-        for (int i = 1; i < ncx - 1; ++i)
-        {
-            float F_e = computeFaceMassFlux(i, j, 0, pressure);
-            float F_w = computeFaceMassFlux(i, j, 1, pressure);
-            float F_n = computeFaceMassFlux(i, j, 2, pressure);
-            float F_s = computeFaceMassFlux(i, j, 3, pressure);
-
-            coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);
-            coefMatrix_[j][i].aW += std::max(F_w, 0.0f);
-            coefMatrix_[j][i].aN += std::max(-F_n, 0.0f);
-            coefMatrix_[j][i].aS += std::max(F_s, 0.0f);
-            coefMatrix_[j][i].aP += (F_e - F_w + F_n - F_s);
-        }
-    }
-}
-```
-
-### 4. 更新测试代码
-
-```cpp
-// 组装 u 动量方程
-u_momentum.resetCoefficients();
-u_momentum.addDiffusionTerm();                    // 先计算 aP
-u_momentum.addConvectionTerm(&pressure);          // 传入压力场启用 RC 插值
-u_momentum.addPressureGradient(pressure);
-```
 
 ## 调用顺序要求
 
@@ -138,8 +47,3 @@ u_momentum.addPressureGradient(pressure);
 
 1. `addDiffusionTerm()` - 先计算 aP
 2. `addConvectionTerm(&pressure)` - 再使用 RC 插值
-
-## 后续优化
-
-- 可以考虑将 `aP` 单独存储，支持更复杂的 RC 实现
-- 可以添加松弛因子支持

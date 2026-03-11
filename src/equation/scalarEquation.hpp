@@ -8,6 +8,7 @@
 #include "src/grid/structuredMesh.hpp"
 
 #include <boost/multi_array.hpp>
+#include <iostream>
 
 /**
  * @brief coefficient of the scalar equation
@@ -83,5 +84,8 @@ public:
     const boost::multi_array<COEF, 2>& getCoefMatrix() const
     {
         return coefMatrix_;
-    }    
+    }
+
+    // 保存系数到文件
+    void saveCoefficientsToFile(const std::string& filename) const;
 };

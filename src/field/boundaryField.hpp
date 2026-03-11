@@ -22,6 +22,12 @@ public:
 	const BoudaryCondition& south(int i) const;
 	const BoudaryCondition& north(int i) const;
 
+	// 压力边界条件访问（与速度边界共用同一数据结构）
+	inline const BoudaryCondition& pressureBC_west(int j) const { return west(j); }
+	inline const BoudaryCondition& pressureBC_east(int j) const { return east(j); }
+	inline const BoudaryCondition& pressureBC_south(int i) const { return south(i); }
+	inline const BoudaryCondition& pressureBC_north(int i) const { return north(i); }
+
 	int ncx() const { return ncx_; }
 	int ncy() const { return ncy_; }
 

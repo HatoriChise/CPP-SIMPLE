@@ -46,6 +46,7 @@ bool test_fluid_props();
 bool test_diffusion_term();
 bool test_convection_term();
 bool test_pressure_gradient();
+bool test_rhie_chow();
 
 // 集成测试
 void test_simple_iteration();
