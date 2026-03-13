@@ -419,19 +419,40 @@ void ScalarEquation::addDiffusionTerm()
     }
 }
 
-void ScalarEquation::addConvectionTerm(const ScalarField *pressure)
+void ScalarEquation::updateMassFluxField(const ScalarField& pressure, ScalarField& massFluxEast, ScalarField& massFluxNorth, ScalarField* massFluxWest, ScalarField* massFluxSouth)
 {
-    // 遍历所有单元（包括边界）
-    // computeFaceMassFlux 内部会处理边界情况（返回 0 通量）
+    // 利用网格交错性，只计算 East 和 North 界面，避免重复计算 West 和 South
     for(int j = 0; j < ncy; ++j)
     {
         for(int i = 0; i < ncx; ++i)
         {
-            // 计算四个界面的质量通量
-            float F_e = computeFaceMassFlux(i, j, Face::East, pressure);  // 东
-            float F_w = computeFaceMassFlux(i, j, Face::West, pressure);  // 西
-            float F_n = computeFaceMassFlux(i, j, Face::North, pressure); // 北
-            float F_s = computeFaceMassFlux(i, j, Face::South, pressure); // 南
+            massFluxEast(i, j) = computeFaceMassFlux(i, j, Face::East, &pressure);
+            massFluxNorth(i, j) = computeFaceMassFlux(i, j, Face::North, &pressure);
+            
+            if(massFluxWest) {
+                (*massFluxWest)(i, j) = computeFaceMassFlux(i, j, Face::West, &pressure);
+            }
+            if(massFluxSouth) {
+                (*massFluxSouth)(i, j) = computeFaceMassFlux(i, j, Face::South, &pressure);
+            }
+        }
+    }
+}
+
+void ScalarEquation::addConvectionTerm(const ScalarField &massFluxEast, const ScalarField &massFluxNorth, const ScalarField *massFluxWest, const ScalarField *massFluxSouth)
+{
+    // 遍历所有单元（包括边界）
+    for(int j = 0; j < ncy; ++j)
+    {
+        for(int i = 0; i < ncx; ++i)
+        {
+            // 直接由存储场读取已知通量：东面和北面直接读取
+            float F_e = massFluxEast(i, j);
+            float F_n = massFluxNorth(i, j);
+            
+            // 西面和南面优先从外部专门的通量库读取，没有的话利用通量守恒从相邻单元读取
+            float F_w = (massFluxWest) ? (*massFluxWest)(i, j) : ((i - 1 >= 0) ? massFluxEast(i - 1, j) : 0.0f);
+            float F_s = (massFluxSouth) ? (*massFluxSouth)(i, j) : ((j - 1 >= 0) ? massFluxNorth(i, j - 1) : 0.0f);
 
             // 迎风格式计算对流系数
             coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);

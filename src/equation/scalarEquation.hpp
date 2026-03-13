@@ -86,7 +86,9 @@ public:
      */
     void resetCoefficients();
 
-    void addConvectionTerm(const ScalarField* pressure = nullptr);
+    void addConvectionTerm(const ScalarField& massFluxEast, const ScalarField& massFluxNorth, const ScalarField* massFluxWest = nullptr, const ScalarField* massFluxSouth = nullptr);
+
+    void updateMassFluxField(const ScalarField& pressure, ScalarField& massFluxEast, ScalarField& massFluxNorth, ScalarField* massFluxWest = nullptr, ScalarField* massFluxSouth = nullptr);
 
     void addDiffusionTerm();
 
