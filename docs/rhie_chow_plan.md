@@ -26,7 +26,7 @@ $$u_e = \hat{u}_e - d_e \left( \frac{\partial p}{\partial x} \right)_e$$现在�
 
 $$u_e=\frac{1}{2}\left( u_P+u_E \right) +\frac{1}{2}d_P\left( \frac{\partial p}{\partial x} \right) _P+\frac{1}{2}d_E\left( \frac{\partial p}{\partial x} \right) _E-d_e\left( \frac{\partial p}{\partial x} \right) _e
 \\
-d_e=\frac{1}{2}\left( d_P+d_E \right) 
+d_e=\frac{1}{2}\left( d_P+d_E \right)
 \\
 \left( \frac{\partial p}{\partial x} \right) _e=\left( p_P-p_E \right) $$
 
@@ -37,9 +37,7 @@ d_e=\frac{1}{2}\left( d_P+d_E \right)
 
 ## 实现方案
 
-
 ### 更新测试代码
-
 
 ## 调用顺序要求
 
