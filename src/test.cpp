@@ -568,14 +568,14 @@ void test_simple_iteration()
     u_momentum.addDiffusionTerm();
     u_momentum.addConvectionTerm(&pressure);  // 使用 RC 插值
     u_momentum.addPressureGradient(pressure);
-    u_momentum.applyBoundaries();  // 应用边界条件
+    // u_momentum.applyBoundaries();  // 应用边界条件
     u_momentum.saveCoefficientsToFile("../data/u_momentum_coefficients.csv");
 
     v_momentum.resetCoefficients();
     v_momentum.addDiffusionTerm();
     v_momentum.addConvectionTerm(); // 不使用 RC 插值
     v_momentum.addPressureGradient(pressure);
-    v_momentum.applyBoundaries();  // 应用边界条件
+    // v_momentum.applyBoundaries();  // 应用边界条件
     v_momentum.saveCoefficientsToFile("../data/v_momentum_coefficients.csv");
 
     // 打印系数摘要

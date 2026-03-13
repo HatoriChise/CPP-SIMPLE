@@ -50,6 +50,14 @@ private:
     // face: 0=东, 1=西, 2=北, 3=南
     float computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure = nullptr) const;
 
+    // 计算界面扩散系数（调和平均）
+    // mu_owner: owner 单元的粘度
+    // mu_neighbor: neighbor 单元的粘度
+    // distance: owner 到 neighbor 的中心距离
+    // area: 界面面积
+    float computeFaceDiffusionCoefficient(float mu_owner, float mu_neighbor, 
+                                           float distance, float area) const;
+
 public:
     // constructor
     // direction: 0=u动量方程, 1=v动量方程, -1=标量方程(默认)

@@ -1,241 +1,124 @@
-#include "scalarEquation.hpp"
+// src/euation/scalarEquation.cpp
+
+#include "src/equation/scalarEquation.hpp"
+
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <Eigen/SparseCholesky>
+
+#include <boost/math/constants/constants.hpp>
+#include <fmt/core.h>
+
+#include <algorithm>
 #include <fstream>
+#include <iostream>
+#include <limits>
+#include <vector>
+
+// Eigen 格式化输出
+#include "utils/formatter4eigen.h"
+
+// 网格尺寸（从配置中获取）
+extern int ncx, ncy;
+extern float Lx, Ly;
+
+// ============================================================================
+// 构造与析构
+// ============================================================================
 
 ScalarEquation::ScalarEquation(StructuredMesh &mesh, ScalarField &scalarField,
                                VectorField &vectorField, BoundaryField &boundaryField,
                                FluidPropertyField &fluidPropertyField, int direction)
-    : mesh_(mesh),
-      scalarField_(scalarField),
-      vectorField_(vectorField),
-      boundaryField_(boundaryField),
-      fluidPropertyField_(fluidPropertyField),
+    : mesh_(mesh), scalarField_(scalarField), vectorField_(vectorField),
+      boundaryField_(boundaryField), fluidPropertyField_(fluidPropertyField),
       direction_(direction)
 {
-    // 根据全局网格尺寸 (ncx, ncy) 初始化 coefMatrix_ 的大小
+    // 初始化系数矩阵
     coefMatrix_.resize(boost::extents[ncy][ncx]);
-
-    // 执行一次 resetCoefficients() 确保初始状态为零
     resetCoefficients();
 }
 
-ScalarEquation::~ScalarEquation() = default;
+ScalarEquation::~ScalarEquation()
+{
+    // 无需特殊清理
+}
+
+// ============================================================================
+// 系数矩阵操作
+// ============================================================================
 
 void ScalarEquation::resetCoefficients()
 {
-    // 遍历 coefMatrix_，将所有单元的 aE, aW, aN, aS, aP, bsrc 重置为 0
-    // 这是每一轮 SIMPLE 迭代开始前必须执行的操作
+    // 遍历所有单元
     for (int j = 0; j < ncy; ++j)
     {
         for (int i = 0; i < ncx; ++i)
         {
-            coefMatrix_[j][i] = COEF{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            coefMatrix_[j][i].aE = 0.0f;
+            coefMatrix_[j][i].aW = 0.0f;
+            coefMatrix_[j][i].aN = 0.0f;
+            coefMatrix_[j][i].aS = 0.0f;
+            coefMatrix_[j][i].aP = 0.0f;
+            coefMatrix_[j][i].bsrc = 0.0f;
         }
     }
 }
 
-// === 核心组装方法 ===
+// ============================================================================
+// 界面通量计算
+// ============================================================================
 
 float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure) const
 {
     auto meshSize = mesh_.getMeshSize();
     float dx = meshSize[0];
     float dy = meshSize[1];
-    float volume = dx * dy;  // 单元体积（二维为面积）
     float rho = fluidPropertyField_(i, j).rho;
 
-    float u_face = 0.0f, v_face = 0.0f;
-    float area = 0.0f;
-
-    // 线性插值部分的速度
-    float u_linear = 0.0f, v_linear = 0.0f;
-
-    // 边界保护标志：在边界附近关闭 RC 修正（相邻单元 aP 可能为零）
-    bool near_boundary = (i <= 1 || i >= ncx - 2 || j <= 1 || j >= ncy - 2);
+    float u_face = 0.0f, v_face = 0.0f, area = 0.0f;
+    float dp = 0.0f;  // 压力差（用于 Rhie-Chow 修正）
 
     switch (face)
     {
     case 0:  // 东侧 (i+1/2, j)
-    {
-        u_linear = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
-        v_linear = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i + 1, j));
+        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
+        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i + 1, j));
         area = dy;
-
-        // RC 修正条件：有压力场、当前单元和东侧单元 aP 都有效、不在边界附近
-        bool apply_rc = (pressure != nullptr && 
-                         coefMatrix_[j][i].aP > 0.0f && 
-                         coefMatrix_[j][i + 1].aP > 0.0f &&
-                         !near_boundary);
-
-        if (apply_rc)
-        {
-            // 获取 P 和 E 单元的 aP 系数
-            float aP_P = coefMatrix_[j][i].aP;
-            float aP_E = coefMatrix_[j][i + 1].aP;
-
-            // 计算 d 系数：d = V / aP
-            float d_P = volume / aP_P;
-            float d_E = volume / aP_E;
-            float d_e = 0.5f * (d_P + d_E);
-
-            // 计算单元中心压力梯度 (中心差分)
-            // (∂p/∂x)_P = (p_E - p_W) / (2*dx)
-            float dpdx_P = (pressure->operator()(i + 1, j) - pressure->operator()(i - 1, j)) / (2.0f * dx);
-            // (∂p/∂x)_E = (p_{E+1} - p_P) / (2*dx)
-            float dpdx_E = (pressure->operator()(i + 2, j) - pressure->operator()(i, j)) / (2.0f * dx);
-
-            // 界面压力梯度 (∂p/∂x)_e = (p_P - p_E) / dx
-            float dpdx_e = (pressure->operator()(i, j) - pressure->operator()(i + 1, j)) / dx;
-
-            // Rhie-Chow 修正后的界面速度
-            // u_e = 0.5*(u_P + u_E) + 0.5*d_P*(∂p/∂x)_P + 0.5*d_E*(∂p/∂x)_E - d_e*(∂p/∂x)_e
-            u_face = u_linear + 0.5f * d_P * dpdx_P + 0.5f * d_E * dpdx_E - d_e * dpdx_e;
-            v_face = v_linear;  // v 分量不需要修正（垂直于界面）
-        }
-        else
-        {
-            u_face = u_linear;
-            v_face = v_linear;
-        }
+        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i + 1, j);  // p_P - p_E
         break;
-    }
-
     case 1:  // 西侧 (i-1/2, j)
-    {
-        u_linear = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
-        v_linear = 0.5f * (vectorField_.v()(i - 1, j) + vectorField_.v()(i, j));
+        u_face = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
+        v_face = 0.5f * (vectorField_.v()(i - 1, j) + vectorField_.v()(i, j));
         area = dy;
-
-        // RC 修正条件：有压力场、当前单元和西侧单元 aP 都有效、不在边界附近
-        bool apply_rc = (pressure != nullptr && 
-                         coefMatrix_[j][i].aP > 0.0f && 
-                         coefMatrix_[j][i - 1].aP > 0.0f &&
-                         !near_boundary);
-
-        if (apply_rc)
-        {
-            // 获取 W 和 P 单元的 aP 系数
-            float aP_W = coefMatrix_[j][i - 1].aP;
-            float aP_P = coefMatrix_[j][i].aP;
-
-            // 计算 d 系数
-            float d_W = volume / aP_W;
-            float d_P = volume / aP_P;
-            float d_w = 0.5f * (d_W + d_P);
-
-            // 计算单元中心压力梯度 (中心差分)
-            // (∂p/∂x)_W = (p_P - p_{W-1}) / (2*dx)
-            float dpdx_W = (pressure->operator()(i, j) - pressure->operator()(i - 2, j)) / (2.0f * dx);
-            // (∂p/∂x)_P = (p_E - p_W) / (2*dx)
-            float dpdx_P = (pressure->operator()(i + 1, j) - pressure->operator()(i - 1, j)) / (2.0f * dx);
-
-            // 界面压力梯度 (∂p/∂x)_w = (p_W - p_P) / dx
-            float dpdx_w = (pressure->operator()(i - 1, j) - pressure->operator()(i, j)) / dx;
-
-            // Rhie-Chow 修正
-            u_face = u_linear + 0.5f * d_W * dpdx_W + 0.5f * d_P * dpdx_P - d_w * dpdx_w;
-            v_face = v_linear;
-        }
-        else
-        {
-            u_face = u_linear;
-            v_face = v_linear;
-        }
+        if (pressure) dp = (*pressure)(i - 1, j) - (*pressure)(i, j);  // p_W - p_P
         break;
-    }
-
     case 2:  // 北侧 (i, j+1/2)
-    {
-        u_linear = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i, j + 1));
-        v_linear = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
+        u_face = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i, j + 1));
+        v_face = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
         area = dx;
-
-        // RC 修正条件：有压力场、当前单元和北侧单元 aP 都有效、不在边界附近
-        bool apply_rc = (pressure != nullptr && 
-                         coefMatrix_[j][i].aP > 0.0f && 
-                         coefMatrix_[j + 1][i].aP > 0.0f &&
-                         !near_boundary);
-
-        if (apply_rc)
-        {
-            // 获取 P 和 N 单元的 aP 系数
-            float aP_P = coefMatrix_[j][i].aP;
-            float aP_N = coefMatrix_[j + 1][i].aP;
-
-            // 计算 d 系数
-            float d_P = volume / aP_P;
-            float d_N = volume / aP_N;
-            float d_n = 0.5f * (d_P + d_N);
-
-            // 计算单元中心压力梯度 (y 方向，中心差分)
-            // (∂p/∂y)_P = (p_N - p_S) / (2*dy)
-            float dpdy_P = (pressure->operator()(i, j + 1) - pressure->operator()(i, j - 1)) / (2.0f * dy);
-            // (∂p/∂y)_N = (p_{N+1} - p_P) / (2*dy)
-            float dpdy_N = (pressure->operator()(i, j + 2) - pressure->operator()(i, j)) / (2.0f * dy);
-
-            // 界面压力梯度 (∂p/∂y)_n = (p_P - p_N) / dy
-            float dpdy_n = (pressure->operator()(i, j) - pressure->operator()(i, j + 1)) / dy;
-
-            // Rhie-Chow 修正（v 分量）
-            v_face = v_linear + 0.5f * d_P * dpdy_P + 0.5f * d_N * dpdy_N - d_n * dpdy_n;
-            u_face = u_linear;  // u 分量不需要修正（垂直于界面）
-        }
-        else
-        {
-            u_face = u_linear;
-            v_face = v_linear;
-        }
+        if (pressure) dp = (*pressure)(i, j) - (*pressure)(i, j + 1);  // p_P - p_N
         break;
-    }
-
     case 3:  // 南侧 (i, j-1/2)
-    {
-        u_linear = 0.5f * (vectorField_.u()(i, j - 1) + vectorField_.u()(i, j));
-        v_linear = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
+        u_face = 0.5f * (vectorField_.u()(i, j - 1) + vectorField_.u()(i, j));
+        v_face = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
         area = dx;
-
-        // RC 修正条件：有压力场、当前单元和南侧单元 aP 都有效、不在边界附近
-        bool apply_rc = (pressure != nullptr && 
-                         coefMatrix_[j][i].aP > 0.0f && 
-                         coefMatrix_[j - 1][i].aP > 0.0f &&
-                         !near_boundary);
-
-        if (apply_rc)
-        {
-            // 获取 S 和 P 单元的 aP 系数
-            float aP_S = coefMatrix_[j - 1][i].aP;
-            float aP_P = coefMatrix_[j][i].aP;
-
-            // 计算 d 系数
-            float d_S = volume / aP_S;
-            float d_P = volume / aP_P;
-            float d_s = 0.5f * (d_S + d_P);
-
-            // 计算单元中心压力梯度 (y 方向，中心差分)
-            // (∂p/∂y)_S = (p_P - p_{S-1}) / (2*dy)
-            float dpdy_S = (pressure->operator()(i, j) - pressure->operator()(i, j - 2)) / (2.0f * dy);
-            // (∂p/∂y)_P = (p_N - p_S) / (2*dy)
-            float dpdy_P = (pressure->operator()(i, j + 1) - pressure->operator()(i, j - 1)) / (2.0f * dy);
-
-            // 界面压力梯度 (∂p/∂y)_s = (p_S - p_P) / dy
-            float dpdy_s = (pressure->operator()(i, j - 1) - pressure->operator()(i, j)) / dy;
-
-            // Rhie-Chow 修正（v 分量）
-            v_face = v_linear + 0.5f * d_S * dpdy_S + 0.5f * d_P * dpdy_P - d_s * dpdy_s;
-            u_face = u_linear;
-        }
-        else
-        {
-            u_face = u_linear;
-            v_face = v_linear;
-        }
+        if (pressure) dp = (*pressure)(i, j - 1) - (*pressure)(i, j);  // p_S - p_P
         break;
     }
 
-    default:
-        u_face = 0.0f;
-        v_face = 0.0f;
-        area = 0.0f;
-        break;
+    // Rhie-Chow 修正（如果提供了压力场且 aP>0）
+    if (pressure != nullptr && coefMatrix_[j][i].aP > 0.0f)
+    {
+        float d = area / coefMatrix_[j][i].aP;  // 动量系数倒数
+        // 根据界面方向修正对应速度分量
+        if (face == 0 || face == 1)  // 东/西界面，修正 u
+        {
+            u_face += d * dp;
+        }
+        else  // 北/南界面，修正 v
+        {
+            v_face += d * dp;
+        }
     }
 
     // 返回质量通量
@@ -245,34 +128,99 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
         return rho * v_face * area;
 }
 
+// 计算界面扩散系数（调和平均）
+float ScalarEquation::computeFaceDiffusionCoefficient(float mu_owner, float mu_neighbor, 
+                                                       float distance, float area) const
+{
+    // 调和平均：mu_face = 2 * mu_P * mu_N / (mu_P + mu_N)
+    // 如果 mu_P + mu_N 接近 0，避免除零
+    float mu_sum = mu_owner + mu_neighbor;
+    if (mu_sum < 1e-10f)
+    {
+        return 0.0f;
+    }
+    
+    float mu_face = 2.0f * mu_owner * mu_neighbor / mu_sum;
+    return mu_face * area / distance;
+}
+
 void ScalarEquation::addDiffusionTerm()
 {
     // 获取单元中心坐标和网格尺寸
     const auto& xc = mesh_.getCellCentersX();
     const auto& yc = mesh_.getCellCentersY();
     auto meshSize = mesh_.getMeshSize();
-    float dx = meshSize[0];  // x方向单元尺寸（用于北/南面面积）
-    float dy = meshSize[1];  // y方向单元尺寸（用于东/西面面积）
+    float dx = meshSize[0];  // x 方向单元尺寸（用于北/南面面积）
+    float dy = meshSize[1];  // y 方向单元尺寸（用于东/西面面积）
 
-
-    // 遍历内部单元
-    for (int j = 1; j < ncy - 1; ++j)
+    // 遍历所有单元（包括边界单元）
+    for (int j = 0; j < ncy; ++j)
     {
-        for (int i = 1; i < ncx - 1; ++i)
+        for (int i = 0; i < ncx; ++i)
         {
-            float mu = fluidPropertyField_(i, j).mu;
+            float mu_P = fluidPropertyField_(i, j).mu;
 
             // 计算相邻单元中心距离
-            float dx_PE = xc[i + 1] - xc[i];  // P到E的距离
-            float dx_WP = xc[i] - xc[i - 1];  // W到P的距离
-            float dy_PN = yc[j + 1] - yc[j];  // P到N的距离
-            float dy_SP = yc[j] - yc[j - 1];  // S到P的距离
+            float dx_PE = (i + 1 < ncx) ? (xc[i + 1] - xc[i]) : dx;  // P 到 E 的距离
+            float dx_WP = (i - 1 >= 0) ? (xc[i] - xc[i - 1]) : dx;   // W 到 P 的距离
+            float dy_PN = (j + 1 < ncy) ? (yc[j + 1] - yc[j]) : dy;  // P 到 N 的距离
+            float dy_SP = (j - 1 >= 0) ? (yc[j] - yc[j - 1]) : dy;   // S 到 P 的距离
 
-            // 扩散系数: a = mu * (面积 / 距离)
-            float aE = mu * dy / dx_PE;
-            float aW = mu * dy / dx_WP;
-            float aN = mu * dx / dy_PN;
-            float aS = mu * dx / dy_SP;
+            // 东界面 (e)
+            float aE = 0.0f;
+            if (i + 1 < ncx)
+            {
+                // 内部界面：使用调和平均
+                float mu_E = fluidPropertyField_(i + 1, j).mu;
+                aE = computeFaceDiffusionCoefficient(mu_P, mu_E, dx_PE, dy);
+            }
+            else
+            {
+                // 东边界：虚拟单元 mu_E = mu_P
+                aE = computeFaceDiffusionCoefficient(mu_P, mu_P, dx_PE, dy);
+            }
+
+            // 西界面 (w)
+            float aW = 0.0f;
+            if (i - 1 >= 0)
+            {
+                // 内部界面：使用调和平均
+                float mu_W = fluidPropertyField_(i - 1, j).mu;
+                aW = computeFaceDiffusionCoefficient(mu_P, mu_W, dx_WP, dy);
+            }
+            else
+            {
+                // 西边界：虚拟单元 mu_W = mu_P
+                aW = computeFaceDiffusionCoefficient(mu_P, mu_P, dx_WP, dy);
+            }
+
+            // 北界面 (n)
+            float aN = 0.0f;
+            if (j + 1 < ncy)
+            {
+                // 内部界面：使用调和平均
+                float mu_N = fluidPropertyField_(i, j + 1).mu;
+                aN = computeFaceDiffusionCoefficient(mu_P, mu_N, dy_PN, dx);
+            }
+            else
+            {
+                // 北边界：虚拟单元 mu_N = mu_P
+                aN = computeFaceDiffusionCoefficient(mu_P, mu_P, dy_PN, dx);
+            }
+
+            // 南界面 (s)
+            float aS = 0.0f;
+            if (j - 1 >= 0)
+            {
+                // 内部界面：使用调和平均
+                float mu_S = fluidPropertyField_(i, j - 1).mu;
+                aS = computeFaceDiffusionCoefficient(mu_P, mu_S, dy_SP, dx);
+            }
+            else
+            {
+                // 南边界：虚拟单元 mu_S = mu_P
+                aS = computeFaceDiffusionCoefficient(mu_P, mu_P, dy_SP, dx);
+            }
 
             // 累加到系数矩阵
             coefMatrix_[j][i].aE += aE;
@@ -282,7 +230,6 @@ void ScalarEquation::addDiffusionTerm()
             coefMatrix_[j][i].aP += (aE + aW + aN + aS);
         }
     }
-    
 }
 
 void ScalarEquation::addConvectionTerm(const ScalarField* pressure)
@@ -312,44 +259,12 @@ void ScalarEquation::addConvectionTerm(const ScalarField* pressure)
 
 void ScalarEquation::addSourceTerm()
 {
-    // TODO: 将自定义源项场 S 的值映射并累加到 bsrc: bsrc += S(i,j) * volume
-    // 针对温度标量方程，S 可以是体积热源项 (W/m^3)，需要乘以单元体积转换为总热量贡献
-}
-
-void ScalarEquation::saveCoefficientsToFile(const std::string& filename) const
-{
-    std::ofstream ofs(filename);
-    if (!ofs.is_open())
-    {
-        fmt::print("ERROR: Cannot open file {} for writing\n", filename);
-        return;
-    }
-
-    // 写入表头
-    ofs << "# i,j,aE,aW,aN,aS,aP,bsrc\n";
-
-    // 遍历所有单元
-    for (int j = 0; j < ncy; ++j)
-    {
-        for (int i = 0; i < ncx; ++i)
-        {
-            const auto& coef = coefMatrix_[j][i];
-            ofs << i << "," << j << ","
-                << coef.aE << "," << coef.aW << ","
-                << coef.aN << "," << coef.aS << ","
-                << coef.aP << "," << coef.bsrc << "\n";
-        }
-    }
-
-    ofs.close();
-    fmt::print("Coefficients saved to {}\n", filename);
+    // TODO: 实现源项
 }
 
 void ScalarEquation::addPressureGradient(const ScalarField& pressure)
 {
-    // 仅对动量方程有效
-    if (direction_ < 0) return;
-
+    // 获取网格尺寸
     auto meshSize = mesh_.getMeshSize();
     float dx = meshSize[0];
     float dy = meshSize[1];
@@ -359,194 +274,74 @@ void ScalarEquation::addPressureGradient(const ScalarField& pressure)
     {
         for (int i = 1; i < ncx - 1; ++i)
         {
-            float p_P = pressure(i, j);
+            if (direction_ == 0)
+            {  // u 动量方程：-dp/dx * V
+                float p_e = 0.5f * (pressure(i, j) + pressure(i + 1, j));
+                float p_w = 0.5f * (pressure(i - 1, j) + pressure(i, j));
+                float dpdx = (p_e - p_w) / dx;
+                float volume = dx * dy;
+                coefMatrix_[j][i].bsrc -= dpdx * volume;
+            }
+            else if (direction_ == 1)
+            {  // v 动量方程：-dp/dy * V
+                float p_n = 0.5f * (pressure(i, j) + pressure(i, j + 1));
+                float p_s = 0.5f * (pressure(i, j - 1) + pressure(i, j));
+                float dpdy = (p_n - p_s) / dy;
+                float volume = dx * dy;
+                coefMatrix_[j][i].bsrc -= dpdy * volume;
+            }
+        }
+    }
+}
 
-            if (direction_ == 0)  // u动量方程
-            {
-                // 界面压力线性插值
-                float p_e = 0.5f * (p_P + pressure(i + 1, j));
-                float p_w = 0.5f * (pressure(i - 1, j) + p_P);
-                // 压力梯度源项
-                coefMatrix_[j][i].bsrc -= (p_e - p_w) * dy;
-            }
-            else if (direction_ == 1)  // v动量方程
-            {
-                // 界面压力线性插值
-                float p_n = 0.5f * (p_P + pressure(i, j + 1));
-                float p_s = 0.5f * (pressure(i, j - 1) + p_P);
-                // 压力梯度源项
-                coefMatrix_[j][i].bsrc -= (p_n - p_s) * dx;
-            }
+void ScalarEquation::setRelaxation(float relaxationFactor)
+{
+    // 亚松驰：a_P = a_P / relaxationFactor
+    // 源项修正：b = b + (1-relaxationFactor)*a_P*phi_P / relaxationFactor
+    for (int j = 0; j < ncy; ++j)
+    {
+        for (int i = 0; i < ncx; ++i)
+        {
+            float aP_old = coefMatrix_[j][i].aP;
+            coefMatrix_[j][i].aP /= relaxationFactor;
+            // 源项修正（如果需要考虑亚松驰）
+            // coefMatrix_[j][i].bsrc += (1.0f - relaxationFactor) * aP_old * scalarField_(i, j) / relaxationFactor;
         }
     }
 }
 
 void ScalarEquation::applyBoundaries()
 {
-    // 遍历所有边界单元，应用边界条件
-    
-    // === 西侧边界 (i=0) ===
-    for (int j = 0; j < ncy; ++j)
-    {
-        const auto& bc = boundaryField_.west(j);
-        
-        // 处理 u 速度边界条件
-        if (direction_ == 0)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                // Dirichlet 条件：u = u_wall
-                float u_bc = bc.VelocityValue[0];
-                coefMatrix_[j][0].aP = 1.0f;
-                coefMatrix_[j][0].aE = 0.0f;
-                coefMatrix_[j][0].aW = 0.0f;
-                coefMatrix_[j][0].aN = 0.0f;
-                coefMatrix_[j][0].aS = 0.0f;
-                coefMatrix_[j][0].bsrc = u_bc;
-            }
-            else if (bc.velocityType == OUTLET)
-            {
-                // Neumann 条件：∂u/∂x = 0 → aW = 0, aP = aE
-                coefMatrix_[j][0].aW = 0.0f;
-                coefMatrix_[j][0].aP = coefMatrix_[j][0].aE;
-            }
-        }
-        
-        // 处理 v 速度边界条件
-        if (direction_ == 1)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                // Dirichlet 条件：v = v_wall
-                float v_bc = bc.VelocityValue[1];
-                coefMatrix_[j][0].aP = 1.0f;
-                coefMatrix_[j][0].aE = 0.0f;
-                coefMatrix_[j][0].aW = 0.0f;
-                coefMatrix_[j][0].aN = 0.0f;
-                coefMatrix_[j][0].aS = 0.0f;
-                coefMatrix_[j][0].bsrc = v_bc;
-            }
-        }
-    }
-    
-    // === 东侧边界 (i=ncx-1) ===
-    for (int j = 0; j < ncy; ++j)
-    {
-        const auto& bc = boundaryField_.east(j);
-        
-        // 处理 u 速度边界条件
-        if (direction_ == 0)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float u_bc = bc.VelocityValue[0];
-                coefMatrix_[j][ncx - 1].aP = 1.0f;
-                coefMatrix_[j][ncx - 1].aE = 0.0f;
-                coefMatrix_[j][ncx - 1].aW = 0.0f;
-                coefMatrix_[j][ncx - 1].aN = 0.0f;
-                coefMatrix_[j][ncx - 1].aS = 0.0f;
-                coefMatrix_[j][ncx - 1].bsrc = u_bc;
-            }
-            else if (bc.velocityType == OUTLET)
-            {
-                // Neumann 条件：∂u/∂x = 0
-                coefMatrix_[j][ncx - 1].aE = 0.0f;
-                coefMatrix_[j][ncx - 1].aP = coefMatrix_[j][ncx - 1].aW;
-            }
-        }
-        
-        // 处理 v 速度边界条件
-        if (direction_ == 1)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float v_bc = bc.VelocityValue[1];
-                coefMatrix_[j][ncx - 1].aP = 1.0f;
-                coefMatrix_[j][ncx - 1].aE = 0.0f;
-                coefMatrix_[j][ncx - 1].aW = 0.0f;
-                coefMatrix_[j][ncx - 1].aN = 0.0f;
-                coefMatrix_[j][ncx - 1].aS = 0.0f;
-                coefMatrix_[j][ncx - 1].bsrc = v_bc;
-            }
-        }
-    }
-    
-    // === 南侧边界 (j=0) ===
-    for (int i = 0; i < ncx; ++i)
-    {
-        const auto& bc = boundaryField_.south(i);
-        
-        // 处理 u 速度边界条件
-        if (direction_ == 0)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float u_bc = bc.VelocityValue[0];
-                coefMatrix_[0][i].aP = 1.0f;
-                coefMatrix_[0][i].aE = 0.0f;
-                coefMatrix_[0][i].aW = 0.0f;
-                coefMatrix_[0][i].aN = 0.0f;
-                coefMatrix_[0][i].aS = 0.0f;
-                coefMatrix_[0][i].bsrc = u_bc;
-            }
-        }
-        
-        // 处理 v 速度边界条件
-        if (direction_ == 1)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float v_bc = bc.VelocityValue[1];
-                coefMatrix_[0][i].aP = 1.0f;
-                coefMatrix_[0][i].aE = 0.0f;
-                coefMatrix_[0][i].aW = 0.0f;
-                coefMatrix_[0][i].aN = 0.0f;
-                coefMatrix_[0][i].aS = 0.0f;
-                coefMatrix_[0][i].bsrc = v_bc;
-            }
-        }
-    }
-    
-    // === 北侧边界 (j=ncy-1) ===
-    for (int i = 0; i < ncx; ++i)
-    {
-        const auto& bc = boundaryField_.north(i);
-        
-        // 处理 u 速度边界条件
-        if (direction_ == 0)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float u_bc = bc.VelocityValue[0];
-                coefMatrix_[ncy - 1][i].aP = 1.0f;
-                coefMatrix_[ncy - 1][i].aE = 0.0f;
-                coefMatrix_[ncy - 1][i].aW = 0.0f;
-                coefMatrix_[ncy - 1][i].aN = 0.0f;
-                coefMatrix_[ncy - 1][i].aS = 0.0f;
-                coefMatrix_[ncy - 1][i].bsrc = u_bc;
-            }
-        }
-        
-        // 处理 v 速度边界条件
-        if (direction_ == 1)
-        {
-            if (bc.velocityType == WALL || bc.velocityType == INLET)
-            {
-                float v_bc = bc.VelocityValue[1];
-                coefMatrix_[ncy - 1][i].aP = 1.0f;
-                coefMatrix_[ncy - 1][i].aE = 0.0f;
-                coefMatrix_[ncy - 1][i].aW = 0.0f;
-                coefMatrix_[ncy - 1][i].aN = 0.0f;
-                coefMatrix_[ncy - 1][i].aS = 0.0f;
-                coefMatrix_[ncy - 1][i].bsrc = v_bc;
-            }
-        }
-    }
+    // TODO: 实现边界条件应用
 }
 
-void ScalarEquation::setRelaxation(float alpha)
+// ============================================================================
+// 工具函数
+// ============================================================================
+
+void ScalarEquation::saveCoefficientsToFile(const std::string& filename) const
 {
-    // TODO: 实现欠松弛逻辑 (Under-relaxation)
-    // aP = aP / alpha;
-    // bsrc = bsrc + (1 - alpha) * aP_old * scalarField_old;
+    std::ofstream file(filename);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        return;
+    }
+
+    // CSV 头
+    file << "i,j,aE,aW,aN,aS,aP,bsrc\n";
+
+    // 写入系数
+    for (int j = 0; j < ncy; ++j)
+    {
+        for (int i = 0; i < ncx; ++i)
+        {
+            const auto& coef = coefMatrix_[j][i];
+            file << i << "," << j << "," << coef.aE << "," << coef.aW << ","
+                 << coef.aN << "," << coef.aS << "," << coef.aP << "," << coef.bsrc << "\n";
+        }
+    }
+
+    file.close();
+    fmt::print("Coefficients saved to {}\n", filename);
 }
