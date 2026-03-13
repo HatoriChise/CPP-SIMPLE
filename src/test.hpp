@@ -36,17 +36,3 @@
 void test();
 
 // 模块测试
-bool test_mesh();
-bool test_scalar_field();
-bool test_vector_field();
-bool test_boundary_field();
-bool test_fluid_props();
-
-// 方程测试
-bool test_diffusion_term();
-bool test_convection_term();
-bool test_pressure_gradient();
-bool test_rhie_chow();
-
-// 集成测试
-void test_simple_iteration();
