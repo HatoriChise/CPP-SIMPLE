@@ -252,11 +252,11 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, Face face,
     case Face::East:
         if(i + 1 < ncx)
         {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i + 1, j)) / dx;
+            gradP_face = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
         }
         else if(i - 1 >= 0)
         {
-            gradP_face = (pressure->operator()(i - 1, j) - pressure->operator()(i, j)) / dx;
+            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
         }
         else
         {
@@ -266,11 +266,11 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, Face face,
     case Face::West:
         if(i - 1 >= 0)
         {
-            gradP_face = (pressure->operator()(i - 1, j) - pressure->operator()(i, j)) / dx;
+            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
         }
         else if(i + 1 < ncx)
         {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i + 1, j)) / dx;
+            gradP_face = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
         }
         else
         {
@@ -280,11 +280,11 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, Face face,
     case Face::North:
         if(j + 1 < ncy)
         {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j + 1)) / dy;
+            gradP_face = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
         }
         else if(j - 1 >= 0)
         {
-            gradP_face = (pressure->operator()(i, j - 1) - pressure->operator()(i, j)) / dy;
+            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
         }
         else
         {
@@ -294,11 +294,11 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, Face face,
     case Face::South:
         if(j - 1 >= 0)
         {
-            gradP_face = (pressure->operator()(i, j - 1) - pressure->operator()(i, j)) / dy;
+            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
         }
         else if(j + 1 < ncy)
         {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j + 1)) / dy;
+            gradP_face = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
         }
         else
         {
