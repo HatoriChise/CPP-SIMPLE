@@ -457,6 +457,7 @@ bool test_rhie_chow()
     }
 
     // 测试 3：棋盘格压力场下，验证 RC 修正的阻尼效果
+    // 注意：RC 修正需要非零速度场才能体现效果
     {
         fmt::print("  Test 3: Checkerboard pressure field (verify RC damping)...\n");
         // 设置棋盘格压力场：p(i,j) = 100 * (-1)^(i+j)
@@ -481,25 +482,26 @@ bool test_rhie_chow()
             fmt::print("\n");
         }
 
-        ScalarField phi(ncx, ncy, 0.0f);
-        ScalarEquation eq_with_rc(mesh, phi, velocity, bc, props, -1);
-        ScalarEquation eq_without_rc(mesh, phi, velocity, bc, props, -1);
-
-        // 组装扩散项
-        eq_with_rc.resetCoefficients();
-        eq_with_rc.addDiffusionTerm();
-        eq_without_rc.resetCoefficients();
-        eq_without_rc.addDiffusionTerm();
-
-        // 设置静止速度场
+        // 设置非零速度场以验证 RC 效果
+        VectorField velocity_nonzero;
         for (int j = 0; j < ncy; ++j)
         {
             for (int i = 0; i < ncx; ++i)
             {
-                velocity.u()(i, j) = 0.0f;
-                velocity.v()(i, j) = 0.0f;
+                velocity_nonzero.u()(i, j) = 1.0f;
+                velocity_nonzero.v()(i, j) = 0.5f;
             }
         }
+
+        ScalarField phi(ncx, ncy, 0.0f);
+        ScalarEquation eq_with_rc(mesh, phi, velocity_nonzero, bc, props, -1);
+        ScalarEquation eq_without_rc(mesh, phi, velocity_nonzero, bc, props, -1);
+
+        // 组装扩散项（得到 aP 系数）
+        eq_with_rc.resetCoefficients();
+        eq_with_rc.addDiffusionTerm();
+        eq_without_rc.resetCoefficients();
+        eq_without_rc.addDiffusionTerm();
 
         // 分别使用 RC 插值和不使用 RC 插值
         eq_with_rc.addConvectionTerm(&pressure_checker);
@@ -515,23 +517,22 @@ bool test_rhie_chow()
         fmt::print("    Without RC: aE={:.6f}, aW={:.6f}, aN={:.6f}, aS={:.6f}, aP={:.6f}\n",
                    coef_no_rc.aE, coef_no_rc.aW, coef_no_rc.aN, coef_no_rc.aS, coef_no_rc.aP);
 
-        // 验证 RC 插值产生了不同的系数（阻尼棋盘格振荡）
-        // 注意：由于速度为零且采用迎风格式，系数可能仍然为零
-        // 这里主要验证 RC 修正确实被调用了
-        bool has_rc_effect = (coef_rc.aE != coef_no_rc.aE ||
+        // 验证 RC 插值产生了不同的系数（RC 修正改变了界面速度或 aP）
+        // 注意：RC 修正主要影响 aP（通过改变连续性方程的质量平衡）
+        bool has_rc_effect = (coef_rc.aP != coef_no_rc.aP ||
+                              coef_rc.aE != coef_no_rc.aE ||
                               coef_rc.aW != coef_no_rc.aW ||
                               coef_rc.aN != coef_no_rc.aN ||
                               coef_rc.aS != coef_no_rc.aS);
 
         if (!has_rc_effect)
         {
-            fmt::print("    Note: RC correction did not change coefficients (zero velocity field)\n");
-            fmt::print("    This is expected: with u=v=0, mass flux is zero regardless of RC\n");
+            fmt::print("    Note: RC correction did not change coefficients\n");
         }
 
-        // 验证：RC 插值应该产生不同的系数
-        TEST_ASSERT(has_rc_effect, "棋盘格压力场：RC 插值产生不同的系数（阻尼效果）");
-        
+        // 验证：RC 插值应该改变 aP 系数（质量平衡）
+        TEST_ASSERT(coef_rc.aP != coef_no_rc.aP, "棋盘格压力场：RC 插值改变 aP 系数");
+
     }
 
 

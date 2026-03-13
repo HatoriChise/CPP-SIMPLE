@@ -146,6 +146,12 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
     }
 
     // RC 修正（如果提供了压力场）
+    // Rhie-Chow 插值公式：u_face = ū_face + 0.5*d_P*(∇p)_P + 0.5*d_N*(∇p)_N - d_face*(∇p)_face
+    // 其中：
+    //   d_P = area / aP_P, d_N = area / aP_N, d_face = 0.5*(d_P + d_N)
+    //   (∇p)_P: P 单元中心压力梯度
+    //   (∇p)_N: 邻居单元中心压力梯度（东界面为 E，西界面为 W，北界面为 N，南界面为 S）
+    //   (∇p)_face: 界面压力梯度
     if (pressure != nullptr && coefMatrix_[j][i].aP > 0.0f)
     {
         // 根据界面方向获取相邻单元的 aP
@@ -154,16 +160,16 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
 
         switch (face)
         {
-        case 0:  // 东侧
+        case 0:  // 东侧：邻居为 E (i+1, j)
             aP_N = coefMatrix_[j][i + 1].aP;
             break;
-        case 1:  // 西侧
+        case 1:  // 西侧：邻居为 W (i-1, j)
             aP_N = coefMatrix_[j][i - 1].aP;
             break;
-        case 2:  // 北侧
+        case 2:  // 北侧：邻居为 N (i, j+1)
             aP_N = coefMatrix_[j + 1][i].aP;
             break;
-        case 3:  // 南侧
+        case 3:  // 南侧：邻居为 S (i, j-1)
             aP_N = coefMatrix_[j - 1][i].aP;
             break;
         }
@@ -179,58 +185,82 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
 
         // 计算 d 系数：d = area / aP
         float d_P = area / aP_P;
-        float d_N = area / aP_N;
+        float d_N = area / aP_N;  // 东侧为 d_E，西侧为 d_W，北侧为 d_N，南侧为 d_S
         float d_face = 0.5f * (d_P + d_N);
 
         // 计算压力梯度
-        float gradP_P = 0.0f, gradP_N = 0.0f, gradP_face = 0.0f;
+        float gradP_P = 0.0f;   // P 单元中心压力梯度
+        float gradP_N = 0.0f;   // 邻居单元中心压力梯度
+        float gradP_face = 0.0f;  // 界面压力梯度
 
         switch (face)
         {
-        case 0:  // 东侧 (x 方向)
+        case 0:  // 东侧 (i+1/2, j) - x 方向
         {
-            // gradP_P: P 单元中心压力梯度
-            bool has_W = (i - 1 > 0);
+            // === Rhie-Chow 插值公式（东界面）===
+            // u_e = ū_e + 0.5*d_P*(∇p)_P + 0.5*d_E*(∇p)_E - d_e*(∇p)_e
+            // 其中：
+            //   (∇p)_P ≈ (P_E - P_W) / (2Δx)   [P 单元中心压力梯度，中心差分]
+            //   (∇p)_E ≈ (P_EE - P_P) / (2Δx)  [E 单元中心压力梯度，中心差分]
+            //   (∇p)_e ≈ (P_E - P_P) / Δx      [界面 e 压力梯度]
+            
+            // 检查邻居是否存在
+            bool has_W = (i - 1 >= 0);
             bool has_E = (i + 1 < ncx - 1);
             bool has_EE = (i + 2 < ncx - 1);
 
+            // 计算 (∇p)_P：P 单元中心压力梯度
             if (has_W && has_E)
             {
+                // 中心差分：(P_E - P_W) / (2Δx)
                 gradP_P = ((*pressure)(i + 1, j) - (*pressure)(i - 1, j)) / (2.0f * dx);
             }
             else if (has_E && !has_W)
             {
+                // 西边界附近：向前差分 (P_E - P_P) / Δx
                 gradP_P = ((*pressure)(i + 1, j) - (*pressure)(i, j)) / dx;
             }
             else if (has_W && !has_E)
             {
+                // 东边界附近：向后差分 (P_P - P_W) / Δx
                 gradP_P = ((*pressure)(i, j) - (*pressure)(i - 1, j)) / dx;
             }
 
-            // gradP_E: E 单元中心压力梯度
+            // 计算 (∇p)_E：E 单元中心压力梯度（注意：这是 gradP_E，不是 gradP_N）
             if (has_EE)
             {
+                // 中心差分：(P_EE - P_P) / (2Δx)
                 gradP_N = ((*pressure)(i + 2, j) - (*pressure)(i, j)) / (2.0f * dx);
             }
             else if (has_E)
             {
+                // 东边界附近：向前差分 (P_E - P_P) / Δx
                 gradP_N = ((*pressure)(i + 1, j) - (*pressure)(i, j)) / dx;
             }
 
-            // gradP_e: 界面压力梯度
-            gradP_face = ((*pressure)(i, j) - (*pressure)(i + 1, j)) / dx;
+            // 计算 (∇p)_e：界面 e 压力梯度
+            // 公式：(∇p)_e ≈ (P_E - P_P) / Δx
+            gradP_face = ((*pressure)(i + 1, j) - (*pressure)(i, j)) / dx;
 
-            // RC 修正：u_e = ū_e + 0.5*d_P*gradP_P + 0.5*d_E*gradP_E - d_e*gradP_e
+            // RC 修正
             u_linear += 0.5f * d_P * gradP_P + 0.5f * d_N * gradP_N - d_face * gradP_face;
             break;
         }
 
-        case 1:  // 西侧 (x 方向)
+        case 1:  // 西侧 (i-1/2, j) - x 方向
         {
-            bool has_W = (i - 1 > 0);
-            bool has_WW = (i - 2 > 0);
+            // === Rhie-Chow 插值公式（西界面）===
+            // u_w = ū_w + 0.5*d_P*(∇p)_P + 0.5*d_W*(∇p)_W - d_w*(∇p)_w
+            // 其中：
+            //   (∇p)_P ≈ (P_E - P_W) / (2Δx)   [P 单元中心压力梯度]
+            //   (∇p)_W ≈ (P_P - P_WW) / (2Δx)  [W 单元中心压力梯度]
+            //   (∇p)_w ≈ (P_W - P_P) / Δx      [界面 w 压力梯度]
+            
+            bool has_W = (i - 1 >= 0);
+            bool has_WW = (i - 2 >= 0);
             bool has_E = (i + 1 < ncx - 1);
 
+            // 计算 (∇p)_P：P 单元中心压力梯度
             if (has_W && has_E)
             {
                 gradP_P = ((*pressure)(i + 1, j) - (*pressure)(i - 1, j)) / (2.0f * dx);
@@ -240,27 +270,41 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
                 gradP_P = ((*pressure)(i, j) - (*pressure)(i - 1, j)) / dx;
             }
 
+            // 计算 (∇p)_W：W 单元中心压力梯度（注意：这是 gradP_W）
             if (has_WW)
             {
+                // 中心差分：(P_P - P_WW) / (2Δx)
                 gradP_N = ((*pressure)(i, j) - (*pressure)(i - 2, j)) / (2.0f * dx);
             }
             else if (has_W)
             {
-                gradP_N = ((*pressure)(i, j) - (*pressure)(i - 1, j)) / dx;
+                // 西边界附近：向前差分 (P_W - P_P) / Δx（注意符号）
+                gradP_N = ((*pressure)(i - 1, j) - (*pressure)(i, j)) / dx;
             }
 
+            // 计算 (∇p)_w：界面 w 压力梯度
+            // 公式：(∇p)_w ≈ (P_W - P_P) / Δx
             gradP_face = ((*pressure)(i - 1, j) - (*pressure)(i, j)) / dx;
 
+            // RC 修正
             u_linear += 0.5f * d_P * gradP_P + 0.5f * d_N * gradP_N - d_face * gradP_face;
             break;
         }
 
-        case 2:  // 北侧 (y 方向)
+        case 2:  // 北侧 (i, j+1/2) - y 方向
         {
-            bool has_S = (j - 1 > 0);
+            // === Rhie-Chow 插值公式（北界面）===
+            // v_n = ū_n + 0.5*d_P*(∇p)_P + 0.5*d_N*(∇p)_N - d_n*(∇p)_n
+            // 其中：
+            //   (∇p)_P ≈ (P_N - P_S) / (2Δy)   [P 单元中心压力梯度]
+            //   (∇p)_N ≈ (P_NN - P_P) / (2Δy)  [N 单元中心压力梯度]
+            //   (∇p)_n ≈ (P_N - P_P) / Δy      [界面 n 压力梯度]
+            
+            bool has_S = (j - 1 >= 0);
             bool has_N = (j + 1 < ncy - 1);
             bool has_NN = (j + 2 < ncy - 1);
 
+            // 计算 (∇p)_P：P 单元中心压力梯度（y 方向）
             if (has_S && has_N)
             {
                 gradP_P = ((*pressure)(i, j + 1) - (*pressure)(i, j - 1)) / (2.0f * dy);
@@ -274,6 +318,7 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
                 gradP_P = ((*pressure)(i, j) - (*pressure)(i, j - 1)) / dy;
             }
 
+            // 计算 (∇p)_N：N 单元中心压力梯度
             if (has_NN)
             {
                 gradP_N = ((*pressure)(i, j + 2) - (*pressure)(i, j)) / (2.0f * dy);
@@ -283,18 +328,29 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
                 gradP_N = ((*pressure)(i, j + 1) - (*pressure)(i, j)) / dy;
             }
 
-            gradP_face = ((*pressure)(i, j) - (*pressure)(i, j + 1)) / dy;
+            // 计算 (∇p)_n：界面 n 压力梯度
+            // 公式：(∇p)_n ≈ (P_N - P_P) / Δy
+            gradP_face = ((*pressure)(i, j + 1) - (*pressure)(i, j)) / dy;
 
+            // RC 修正
             v_linear += 0.5f * d_P * gradP_P + 0.5f * d_N * gradP_N - d_face * gradP_face;
             break;
         }
 
-        case 3:  // 南侧 (y 方向)
+        case 3:  // 南侧 (i, j-1/2) - y 方向
         {
-            bool has_S = (j - 1 > 0);
-            bool has_SS = (j - 2 > 0);
+            // === Rhie-Chow 插值公式（南界面）===
+            // v_s = ū_s + 0.5*d_P*(∇p)_P + 0.5*d_S*(∇p)_S - d_s*(∇p)_s
+            // 其中：
+            //   (∇p)_P ≈ (P_N - P_S) / (2Δy)   [P 单元中心压力梯度]
+            //   (∇p)_S ≈ (P_P - P_SS) / (2Δy)  [S 单元中心压力梯度]
+            //   (∇p)_s ≈ (P_S - P_P) / Δy      [界面 s 压力梯度]
+            
+            bool has_S = (j - 1 >= 0);
+            bool has_SS = (j - 2 >= 0);
             bool has_N = (j + 1 < ncy - 1);
 
+            // 计算 (∇p)_P：P 单元中心压力梯度（y 方向）
             if (has_S && has_N)
             {
                 gradP_P = ((*pressure)(i, j + 1) - (*pressure)(i, j - 1)) / (2.0f * dy);
@@ -304,17 +360,21 @@ float ScalarEquation::computeFaceMassFlux(int i, int j, int face, const ScalarFi
                 gradP_P = ((*pressure)(i, j) - (*pressure)(i, j - 1)) / dy;
             }
 
+            // 计算 (∇p)_S：S 单元中心压力梯度
             if (has_SS)
             {
                 gradP_N = ((*pressure)(i, j) - (*pressure)(i, j - 2)) / (2.0f * dy);
             }
             else if (has_S)
             {
-                gradP_N = ((*pressure)(i, j) - (*pressure)(i, j - 1)) / dy;
+                gradP_N = ((*pressure)(i, j - 1) - (*pressure)(i, j)) / dy;
             }
 
+            // 计算 (∇p)_s：界面 s 压力梯度
+            // 公式：(∇p)_s ≈ (P_S - P_P) / Δy
             gradP_face = ((*pressure)(i, j - 1) - (*pressure)(i, j)) / dy;
 
+            // RC 修正
             v_linear += 0.5f * d_P * gradP_P + 0.5f * d_N * gradP_N - d_face * gradP_face;
             break;
         }
