@@ -25,6 +25,7 @@ set (SOURCES
     src/field/vectorField.cpp
     src/field/boundaryField.cpp
     src/field/fluidProperties.cpp
+    src/field/massFluxField.cpp
 )
 
 # 生成可执行文件（保留你的原有配置）

@@ -90,6 +90,11 @@ std::array<float, 2> StructuredMesh::getMeshSize()
     return {dx_, dy_};
 }
 
+const std::array<float, 2> StructuredMesh::getMeshSize() const
+{
+    return {dx_, dy_};
+}
+
 void StructuredMesh::saveMeshInfo()
 {
     namespace fs = std::filesystem;

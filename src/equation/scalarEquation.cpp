@@ -1,6 +1,7 @@
 // src/euation/scalarEquation.cpp
 
 #include "src/equation/scalarEquation.hpp"
+#include "src/field/massFluxField.hpp"
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -82,238 +83,6 @@ bool ScalarEquation::isBoundaryFace(int i, int j, Face face) const
     }
 }
 
-float ScalarEquation::computeFaceMassFlux(int i, int j, Face face,
-                                          const ScalarField *pressure) const
-{
-    auto meshSize = mesh_.getMeshSize();
-    float dx = meshSize[0]; // x 方向单元尺寸（用于北/南面面积）
-    float dy = meshSize[1]; // y 方向单元尺寸（用于东/西面面积）
-    float volume = dx * dy; // 单元体积
-    float rho = fluidPropertyField_(i, j).rho;
-
-
-    float linearVelocity = 0.0f;
-    float area = (face == Face::East || face == Face::West) ? dy : dx;
-    switch(face)
-    {
-    case Face::East: // 东面 (e)
-        linearVelocity = 0.5f * (vectorField_.u()(i, j) + vectorField_.u()(i + 1, j));
-        break;
-    case Face::West: // 西面 (w)
-        linearVelocity = 0.5f * (vectorField_.u()(i - 1, j) + vectorField_.u()(i, j));
-        break;
-    case Face::North: // 北面 (n)
-        linearVelocity = 0.5f * (vectorField_.v()(i, j) + vectorField_.v()(i, j + 1));
-        break;
-    case Face::South: // 南面 (s)
-        linearVelocity = 0.5f * (vectorField_.v()(i, j - 1) + vectorField_.v()(i, j));
-        break;
-    default:
-        throw std::invalid_argument("Invalid face index");
-    }
-
-    if(pressure == nullptr)
-    {
-        // 线性插值
-        return rho * linearVelocity * area;
-    }
-
-    // RC interpolation
-    // 计算压力梯度修正项
-    float aP = coefMatrix_[j][i].aP;
-
-    float aP_nabor = 0.0f;
-    switch(face)
-    {
-    case Face::East: // 东面 (e)
-        aP_nabor = coefMatrix_[j][i + 1].aP;
-        break;
-    case Face::West: // 西面 (w)
-        aP_nabor = coefMatrix_[j][i - 1].aP;
-        break;
-    case Face::North: // 北面 (n)
-        aP_nabor = coefMatrix_[j + 1][i].aP;
-        break;
-    case Face::South: // 南面 (s)
-        aP_nabor = coefMatrix_[j - 1][i].aP;
-        break;
-    }
-
-    // 防止 aP 过小导致数值不稳定，回退到线性插值通量
-    if(std::fabs(aP) < 1e-10f || std::fabs(aP_nabor) < 1e-10f)
-    {
-        return rho * linearVelocity * area;
-    }
-
-    // 计算系数d = V / aP
-    float d_P = volume / aP;
-    float d_nabor = volume / aP_nabor;
-    float d_face = 0.5f * (d_P + d_nabor);
-
-    // RC插值公式
-    /**
-     * $$u_e=\bar{u}_e+\frac{1}{2}d_P\left( \frac{P_E-P_W}{2\Delta x} \right) +\frac{1}{2}d_E\left(
-     * \frac{P_{EE}-P_P}{2\Delta x} \right) -d_e\left( \frac{P_E - P_P}{\Delta x} \right) $$
-     */
-    // 计算(P_E - P_W) / (2 * dx)
-    float gradP_P = 0.0f;
-    switch(face)
-    {
-    case Face::East: // 东面 (e)
-    case Face::West: // 西面 (w)
-        if(i > 0 && i < ncx - 1)
-        {
-            gradP_P = (pressure->operator()(i + 1, j) - pressure->operator()(i - 1, j)) / (2.0f * dx);
-        }
-        else if(i == 0)
-        {
-            gradP_P = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
-        }
-        else
-        {
-            gradP_P = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
-        }
-        break;
-    case Face::North: // 北面 (n)
-    case Face::South: // 南面 (s)
-        if(j > 0 && j < ncy - 1)
-        {
-            gradP_P = (pressure->operator()(i, j + 1) - pressure->operator()(i, j - 1)) / (2.0f * dy);
-        }
-        else if(j == 0)
-        {
-            gradP_P = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
-        }
-        else
-        {
-            gradP_P = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
-        }
-        break;
-    }
-    
-    // 计算(P_EE - P_P) / (2 * dx)
-    float gradP_nabor = 0.0f;
-    switch(face)
-    {
-    case Face::East: // 邻居为 E
-        if(i < ncx - 2)
-        {
-            // 在 E 邻居点做中心差分：(P_{i+2} - P_i) / (2*dx)
-            gradP_nabor = (pressure->operator()(i + 2, j) - pressure->operator()(i, j)) / (2.0f * dx);
-        }
-        else
-        {
-            // E 邻居落在右边界附近，回退到单边差分
-            gradP_nabor = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
-        }
-        break;
-    case Face::West: // 邻居为 W
-        if(i > 1)
-        {
-            // 在 W 邻居点做中心差分：(P_i - P_{i-2}) / (2*dx)
-            gradP_nabor = (pressure->operator()(i, j) - pressure->operator()(i - 2, j)) / (2.0f * dx);
-        }
-        else
-        {
-            // W 邻居落在左边界附近，回退到单边差分
-            gradP_nabor = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
-        }
-        break;
-    case Face::North: // 邻居为 N
-        if(j < ncy - 2)
-        {
-            // 在 N 邻居点做中心差分：(P_{j+2} - P_j) / (2*dy)
-            gradP_nabor = (pressure->operator()(i, j + 2) - pressure->operator()(i, j)) / (2.0f * dy);
-        }
-        else
-        {
-            // N 邻居落在上边界附近，回退到单边差分
-            gradP_nabor = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
-        }
-        break;
-    case Face::South: // 邻居为 S
-        if(j > 1)
-        {
-            // 在 S 邻居点做中心差分：(P_j - P_{j-2}) / (2*dy)
-            gradP_nabor = (pressure->operator()(i, j) - pressure->operator()(i, j - 2)) / (2.0f * dy);
-        }
-        else
-        {
-            // S 邻居落在下边界附近，回退到单边差分
-            gradP_nabor = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
-        }
-        break;
-    }
-    
-    // 计算(P_E - P_P) / dx
-    float gradP_face = 0.0f;
-    switch(face)
-    {
-    case Face::East:
-        if(i + 1 < ncx)
-        {
-            gradP_face = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
-        }
-        else if(i - 1 >= 0)
-        {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
-        }
-        else
-        {
-            gradP_face = 0.0f;
-        }
-        break;
-    case Face::West:
-        if(i - 1 >= 0)
-        {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i - 1, j)) / dx;
-        }
-        else if(i + 1 < ncx)
-        {
-            gradP_face = (pressure->operator()(i + 1, j) - pressure->operator()(i, j)) / dx;
-        }
-        else
-        {
-            gradP_face = 0.0f;
-        }
-        break;
-    case Face::North:
-        if(j + 1 < ncy)
-        {
-            gradP_face = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
-        }
-        else if(j - 1 >= 0)
-        {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
-        }
-        else
-        {
-            gradP_face = 0.0f;
-        }
-        break;
-    case Face::South:
-        if(j - 1 >= 0)
-        {
-            gradP_face = (pressure->operator()(i, j) - pressure->operator()(i, j - 1)) / dy;
-        }
-        else if(j + 1 < ncy)
-        {
-            gradP_face = (pressure->operator()(i, j + 1) - pressure->operator()(i, j)) / dy;
-        }
-        else
-        {
-            gradP_face = 0.0f;
-        }
-        break;
-    default:
-        throw std::invalid_argument("Invalid face index");
-    }
-
-    float correctedVelocity =
-        linearVelocity + 0.5f * d_P * gradP_P + 0.5f * d_nabor * gradP_nabor - d_face * gradP_face;
-
-    return rho * correctedVelocity * area;
-}
 
 // 计算界面扩散系数（调和平均）
 float ScalarEquation::computeFaceDiffusionCoefficient(float mu_owner, float mu_neighbor,
@@ -419,27 +188,8 @@ void ScalarEquation::addDiffusionTerm()
     }
 }
 
-void ScalarEquation::updateMassFluxField(const ScalarField& pressure, ScalarField& massFluxEast, ScalarField& massFluxNorth, ScalarField* massFluxWest, ScalarField* massFluxSouth)
-{
-    // 利用网格交错性，只计算 East 和 North 界面，避免重复计算 West 和 South
-    for(int j = 0; j < ncy; ++j)
-    {
-        for(int i = 0; i < ncx; ++i)
-        {
-            massFluxEast(i, j) = computeFaceMassFlux(i, j, Face::East, &pressure);
-            massFluxNorth(i, j) = computeFaceMassFlux(i, j, Face::North, &pressure);
-            
-            if(massFluxWest) {
-                (*massFluxWest)(i, j) = computeFaceMassFlux(i, j, Face::West, &pressure);
-            }
-            if(massFluxSouth) {
-                (*massFluxSouth)(i, j) = computeFaceMassFlux(i, j, Face::South, &pressure);
-            }
-        }
-    }
-}
 
-void ScalarEquation::addConvectionTerm(const ScalarField &massFluxEast, const ScalarField &massFluxNorth, const ScalarField *massFluxWest, const ScalarField *massFluxSouth)
+void ScalarEquation::addConvectionTerm(const MassFluxField& massFlux)
 {
     // 遍历所有单元（包括边界）
     for(int j = 0; j < ncy; ++j)
@@ -447,12 +197,12 @@ void ScalarEquation::addConvectionTerm(const ScalarField &massFluxEast, const Sc
         for(int i = 0; i < ncx; ++i)
         {
             // 直接由存储场读取已知通量：东面和北面直接读取
-            float F_e = massFluxEast(i, j);
-            float F_n = massFluxNorth(i, j);
+            float F_e = massFlux(i, j).mE;
+            float F_n = massFlux(i, j).mN;
             
-            // 西面和南面优先从外部专门的通量库读取，没有的话利用通量守恒从相邻单元读取
-            float F_w = (massFluxWest) ? (*massFluxWest)(i, j) : ((i - 1 >= 0) ? massFluxEast(i - 1, j) : 0.0f);
-            float F_s = (massFluxSouth) ? (*massFluxSouth)(i, j) : ((j - 1 >= 0) ? massFluxNorth(i, j - 1) : 0.0f);
+            // 西面和南面优先从外部专门的通量库读取
+            float F_w = massFlux(i, j).mW;
+            float F_s = massFlux(i, j).mS;
 
             // 迎风格式计算对流系数
             coefMatrix_[j][i].aE += std::max(-F_e, 0.0f);

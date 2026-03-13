@@ -54,9 +54,6 @@ private:
 
     int direction_;  // 0=u动量, 1=v动量, -1=标量方程(默认)
 
-    // 计算界面质量通量（当前使用线性插值，后续可升级为Rhie-Chow）
-    float computeFaceMassFlux(int i, int j, Face face, const ScalarField* pressure = nullptr) const;
-
     // 判断指定面的邻居单元是否越界（即该面位于计算域边界）
     bool isBoundaryFace(int i, int j, Face face) const;
 
@@ -86,9 +83,7 @@ public:
      */
     void resetCoefficients();
 
-    void addConvectionTerm(const ScalarField& massFluxEast, const ScalarField& massFluxNorth, const ScalarField* massFluxWest = nullptr, const ScalarField* massFluxSouth = nullptr);
-
-    void updateMassFluxField(const ScalarField& pressure, ScalarField& massFluxEast, ScalarField& massFluxNorth, ScalarField* massFluxWest = nullptr, ScalarField* massFluxSouth = nullptr);
+    void addConvectionTerm(const class MassFluxField& massFlux);
 
     void addDiffusionTerm();
 

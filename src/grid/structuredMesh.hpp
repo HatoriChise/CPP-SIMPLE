@@ -47,6 +47,7 @@ class StructuredMesh
      * @return std::array<float, 2> 
      */
     std::array<float, 2> getMeshSize();
+    const std::array<float, 2> getMeshSize() const;
 
     void saveMeshInfo(); // 打印网格信息
 
