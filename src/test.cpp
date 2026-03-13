@@ -466,7 +466,7 @@ bool test_rhie_chow()
         {
             for (int i = 0; i < ncx; ++i)
             {
-                pressure_checker(i, j) = 100.0f * ((i + j) % 2 == 0 ? 1.0f : -1.0f);
+                pressure_checker(i, j) = 10.0f * ((i + j) % 2 == 0 ? 1.0f : -1.0f);
             }
         }
 
@@ -482,20 +482,19 @@ bool test_rhie_chow()
             fmt::print("\n");
         }
 
-        // 设置非零速度场以验证 RC 效果
-        VectorField velocity_nonzero;
+        // 设置静止速度场
         for (int j = 0; j < ncy; ++j)
         {
             for (int i = 0; i < ncx; ++i)
             {
-                velocity_nonzero.u()(i, j) = 1.0f;
-                velocity_nonzero.v()(i, j) = 0.5f;
+                velocity.u()(i, j) = 0.0f;
+                velocity.v()(i, j) = 0.0f;
             }
         }
 
         ScalarField phi(ncx, ncy, 0.0f);
-        ScalarEquation eq_with_rc(mesh, phi, velocity_nonzero, bc, props, -1);
-        ScalarEquation eq_without_rc(mesh, phi, velocity_nonzero, bc, props, -1);
+        ScalarEquation eq_with_rc(mesh, phi, velocity, bc, props, 1);
+        ScalarEquation eq_without_rc(mesh, phi, velocity, bc, props, 1);
 
         // 组装扩散项（得到 aP 系数）
         eq_with_rc.resetCoefficients();
@@ -503,12 +502,14 @@ bool test_rhie_chow()
         eq_without_rc.resetCoefficients();
         eq_without_rc.addDiffusionTerm();
 
+
+
         // 分别使用 RC 插值和不使用 RC 插值
         eq_with_rc.addConvectionTerm(&pressure_checker);
         eq_without_rc.addConvectionTerm(nullptr);  // 无 RC
 
         // 比较系数差异
-        int i = 2, j = 2;
+        int i = 1, j = 1;
         const auto& coef_rc = eq_with_rc.getCoefMatrix()[j][i];
         const auto& coef_no_rc = eq_without_rc.getCoefMatrix()[j][i];
 

@@ -36,6 +36,14 @@ class ScalarEquation
 {
     // data for scalar equation
 private:
+    enum class Face
+    {
+        East,
+        West,
+        North,
+        South
+    };
+
     StructuredMesh &mesh_;
     ScalarField &scalarField_;
     VectorField &vectorField_;
@@ -47,8 +55,10 @@ private:
     int direction_;  // 0=u动量, 1=v动量, -1=标量方程(默认)
 
     // 计算界面质量通量（当前使用线性插值，后续可升级为Rhie-Chow）
-    // face: 0=东, 1=西, 2=北, 3=南
-    float computeFaceMassFlux(int i, int j, int face, const ScalarField* pressure = nullptr) const;
+    float computeFaceMassFlux(int i, int j, Face face, const ScalarField* pressure = nullptr) const;
+
+    // 判断指定面的邻居单元是否越界（即该面位于计算域边界）
+    bool isBoundaryFace(int i, int j, Face face) const;
 
     // 计算界面扩散系数（调和平均）
     // mu_owner: owner 单元的粘度
