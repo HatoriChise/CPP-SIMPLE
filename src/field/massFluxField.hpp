@@ -35,6 +35,8 @@ public:
                       const ScalarEquation* uEq, 
                       const ScalarEquation* vEq);
 
+    void initalizeFluxes();
+
 private:
     int ncx_;
     int ncy_;

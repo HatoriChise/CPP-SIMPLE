@@ -5,10 +5,24 @@
 #include <cmath>
 #include <stdexcept>
 
-MassFluxField::MassFluxField(int ncx, int ncy) : ncx_(ncx), ncy_(ncy) {
+MassFluxField::MassFluxField(int ncx, int ncy) : ncx_(ncx), ncy_(ncy)
+{
     data_.resize(boost::extents[ncy_][ncx_]);
 }
 
+void MassFluxField::initalizeFluxes()
+{
+    for(int j = 0; j < ncy_; ++j)
+    {
+        for(int i = 0; i < ncx_; ++i)
+        {
+            data_[j][i].mE = 0.0f;
+            data_[j][i].mW = 0.0f;
+            data_[j][i].mN = 0.0f;
+            data_[j][i].mS = 0.0f;
+        }
+    }
+}
 void MassFluxField::updateFluxes(const StructuredMesh& mesh, 
                                  const VectorField& vectorField, 
                                  const FluidPropertyField& fluidPropertyField, 
@@ -189,6 +203,37 @@ float MassFluxField::computeFaceMassFlux(int i, int j, Face face,
     }
 
     float correctedVelocity = linearVelocity + 0.5f * d_P * gradP_P + 0.5f * d_nabor * gradP_nabor - d_face * gradP_face;
+
+    // Debug output (formatted)
+    std::cout << "===========================================================" << std::endl;
+    std::cout << "Debug Info for cell (" << i << ", " << j << ") - Face: ";
+    switch(face)
+    {
+    case Face::East:
+        std::cout << "East";
+        break;
+    case Face::West:
+        std::cout << "West";
+        break;
+    case Face::North:
+        std::cout << "North";
+        break;
+    case Face::South:
+        std::cout << "South";
+        break;
+    }
+    std::cout << "\nDEBUG_nabor:" << " volume:" << volume << " aP_nabor: " << aP_nabor
+              << " d_nabor: " << d_nabor << std::endl;
+    std::cout << "\n"
+              << " d_P       : " << d_P << " gradP_P   : " << gradP_P
+              << " d_p * gradP_P: " << d_P * gradP_P << "\n"
+              << " d_nabor   : " << d_nabor << " gradP_nabor: " << gradP_nabor
+              << " d_nabor * gradP_nabor: " << d_nabor * gradP_nabor << "\n"
+              << " d_face    : " << d_face << " gradP_face : " << gradP_face
+              << " d_face * gradP_face: " << d_face * gradP_face << "\n"
+              << " linearVelocity: " << linearVelocity << "\n"
+              << " correctedVelocity: " << correctedVelocity << "\n"
+              << std::endl;
 
     return rho * correctedVelocity * area;
 }

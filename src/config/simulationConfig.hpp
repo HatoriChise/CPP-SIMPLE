@@ -45,10 +45,10 @@ struct BoudaryCondition
 };
 
 // === 几何与网格 ===
-constexpr float Lx = 10.0; // 腔体宽度
-constexpr float Ly = 10.0; // 腔体高度
-constexpr int ncx = 5;   // cell number in all directions
-constexpr int ncy = 5;
+constexpr float Lx = 3.0; // 腔体宽度
+constexpr float Ly = 3.0; // 腔体高度
+constexpr int ncx = 3;   // cell number in all directions
+constexpr int ncy = 3;
 
 
 // === 边界条件 ===
@@ -58,7 +58,7 @@ constexpr float lid_velocity = 1.0; // 顶盖速度（U）
 constexpr float Re = 100.0;                  // 雷诺数
 constexpr float density = 1.0;                   // 密度（通常设为1）
 constexpr float nu_fluid = lid_velocity * Lx / Re; // 运动粘度 = U*L / Re
-constexpr float mu_fluid = density * nu_fluid;               // 动力粘度 = rho * nu
+constexpr float mu_fluid = 0.1;               // 动力粘度 = rho * nu
 constexpr float k_fluid = 0.6;               // 导热率 (W/m·K)
 constexpr float cp_fluid = 1000.0;           // 定压比热 (J/kg·K)
 

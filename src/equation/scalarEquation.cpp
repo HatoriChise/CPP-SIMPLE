@@ -189,7 +189,7 @@ void ScalarEquation::addDiffusionTerm()
 }
 
 
-void ScalarEquation::addConvectionTerm(const MassFluxField& massFlux)
+void ScalarEquation::addConvectionTerm(const MassFluxField &massFlux)
 {
     // 遍历所有单元（包括边界）
     for(int j = 0; j < ncy; ++j)
@@ -199,8 +199,6 @@ void ScalarEquation::addConvectionTerm(const MassFluxField& massFlux)
             // 直接由存储场读取已知通量：东面和北面直接读取
             float F_e = massFlux(i, j).mE;
             float F_n = massFlux(i, j).mN;
-            
-            // 西面和南面优先从外部专门的通量库读取
             float F_w = massFlux(i, j).mW;
             float F_s = massFlux(i, j).mS;
 
@@ -211,7 +209,8 @@ void ScalarEquation::addConvectionTerm(const MassFluxField& massFlux)
             coefMatrix_[j][i].aS += std::max(F_s, 0.0f);
 
             // 中心系数贡献（连续性）
-            coefMatrix_[j][i].aP += (F_e - F_w + F_n - F_s);
+            coefMatrix_[j][i].aP += std::max(-F_e, 0.0f) + std::max(F_w, 0.0f) +
+                                    std::max(-F_n, 0.0f) + std::max(F_s, 0.0f);
         }
     }
 }
