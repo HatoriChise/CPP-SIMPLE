@@ -45,10 +45,10 @@ struct BoudaryCondition
 };
 
 // === 几何与网格 ===
-constexpr float Lx = 3.0; // 腔体宽度
-constexpr float Ly = 3.0; // 腔体高度
-constexpr int ncx = 3;   // cell number in all directions
-constexpr int ncy = 3;
+constexpr float Lx = 4.0; // 腔体宽度
+constexpr float Ly = 4.0; // 腔体高度
+constexpr int ncx = 4;   // cell number in all directions
+constexpr int ncy = 4;
 
 
 // === 边界条件 ===

@@ -48,11 +48,11 @@ bool test_mass_flux_checkerboard_pressure()
         fmt::print("    j={}: ", j);
         for (int i = 0; i < ncx; ++i)
         {
-            if (i == 0)
+            if (i == 0 || i == ncx - 1)
                 pressure(i, j) = -10.0f;
             else if (i == 1)
                 pressure(i, j) = 0.0f;
-            else
+            else if(i == 2 )
                 pressure(i, j) = 10.0f;
             
             fmt::print("{:.0f} ", pressure(i, j));
@@ -134,23 +134,46 @@ bool test_mass_flux_checkerboard_pressure()
                u_e_noRC, u_w_noRC, v_n_noRC, v_s_noRC);
 
     // 9. 输出多个单元的面速度分布
-    fmt::print("\n  Face velocity distribution (u_e and u_w at each cell):\n");
-    for (int jj = ncy - 1; jj >= 0; --jj)
+    fmt::print("\n  Face velocity distribution:\n");
+    fmt::print("  {:-^60}\n", ""); // 分隔线
+
+    // 打印表头
+    fmt::print("  {:>6}", "j\\i");
+    for(int ii = 0; ii < ncx; ++ii)
     {
-        fmt::print("    j={}: ", jj);
-        for (int ii = 0; ii < ncx; ++ii)
+        fmt::print(" {:>8}", fmt::format("u_e[{}]", ii));
+    }
+    fmt::print(" |");
+    for(int ii = 0; ii < ncx; ++ii)
+    {
+        fmt::print(" {:>8}", fmt::format("u_w[{}]", ii));
+    }
+    fmt::print("\n");
+    fmt::print("  {:-^60}\n", ""); // 分隔线
+
+    // 打印数据
+    for(int jj = ncy - 1; jj >= 0; --jj)
+    {
+        fmt::print("  {:>4}", jj);
+
+        // 打印u_e值
+        for(int ii = 0; ii < ncx; ++ii)
         {
             float ue_face = massFlux(ii, jj).mE / (rho * dy);
-            fmt::print("{:.3f} ", ue_face);
+            fmt::print(" {:>8.3f}", ue_face);
         }
-        for (int ii = 0; ii < ncx; ++ii)
+        fmt::print(" |"); // 分隔符
+
+        // 打印u_w值
+        for(int ii = 0; ii < ncx; ++ii)
         {
             float uw_face = massFlux(ii, jj).mW / (rho * dy);
-            fmt::print("{:.3f} ", uw_face);
+            fmt::print(" {:>8.3f}", uw_face);
         }
-        
         fmt::print("\n");
     }
+    fmt::print("  {:-^60}\n", ""); // 分隔线
+
 
     TEST_PASSED("MassFluxField with Checkerboard Pressure");
     return true;
