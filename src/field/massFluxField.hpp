@@ -31,6 +31,7 @@ public:
     void updateFluxes(const StructuredMesh& mesh, 
                       const VectorField& vectorField, 
                       const FluidPropertyField& fluidPropertyField, 
+                      const BoundaryField& boundaryField,
                       const ScalarField* pressure,
                       const ScalarEquation* uEq, 
                       const ScalarEquation* vEq);
@@ -48,6 +49,7 @@ private:
                               const StructuredMesh& mesh,
                               const VectorField& vectorField,
                               const FluidPropertyField& fluidPropertyField,
+                              const BoundaryField& boundaryField,
                               const ScalarField* pressure,
                               const ScalarEquation* uEq,
                               const ScalarEquation* vEq) const;

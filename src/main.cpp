@@ -17,5 +17,6 @@ int main()
     auto t1 = std::chrono::high_resolution_clock::now();
     using ms = std::chrono::duration<double, std::milli>;
     fmt::print("Elapsed time: {:.2f} ms\n", std::chrono::duration_cast<ms>(t1 - t0).count());
+    fmt::print("TEST AT {}\n", t1.time_since_epoch().count());
     return 0;
 }

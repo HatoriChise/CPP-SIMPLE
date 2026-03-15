@@ -54,9 +54,6 @@ private:
 
     int direction_;  // 0=u动量, 1=v动量, -1=标量方程(默认)
 
-    // 判断指定面的邻居单元是否越界（即该面位于计算域边界）
-    bool isBoundaryFace(int i, int j, Face face) const;
-
     // 计算界面扩散系数（调和平均）
     // mu_owner: owner 单元的粘度
     // mu_neighbor: neighbor 单元的粘度
@@ -89,7 +86,7 @@ public:
 
     void addSourceTerm();
 
-    void applyBoundaries();
+    void applyBoundaryCondition(); // 考虑边界条件，方程系数矩阵的调整
 
     // 添加压力梯度源项，需要传入压力场
     void addPressureGradient(const ScalarField& pressure);

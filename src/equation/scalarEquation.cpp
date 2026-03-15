@@ -45,6 +45,180 @@ ScalarEquation::~ScalarEquation()
 // 系数矩阵操作
 // ============================================================================
 
+void ScalarEquation::applyBoundaryCondition()
+{
+    // direction_ = 0 是 u动量方程，direction_ = 1 是 v动量方程，-1 是标量方程
+    // coefficients : aP * phi_P = aE * phi_E + aW * phi_W + aN * phi_N + aS * phi_S + bsrc
+    // aE aW aN aS
+
+    // get mesh size
+    auto meshSize = mesh_.getMeshSize();
+    float dx = meshSize[0];
+    float dy = meshSize[1];
+
+    // 遍历所有边界单元，根据边界条件调整系数
+    // west i = 0
+    for(int j = 0; j < ncy; ++j)
+    {
+        const auto &bc = boundaryField_.west(j);
+        float &aW = coefMatrix_[j][0].aW;
+        float &aP = coefMatrix_[j][0].aP;
+        float &bsrc = coefMatrix_[j][0].bsrc;
+
+        if(bc.velocityType == INLET)
+        {
+            // 入口：速度已知，使用 Dirichlet 条件
+            float u_inlet = bc.VelocityValue[0];
+            float v_inlet = bc.VelocityValue[1];
+            // 低阶精度插值
+            if(direction_ == 0)
+            {
+                aP += aW;
+                bsrc += 2.0f * aW * u_inlet;
+                aW = 0.0f;
+            }
+            if (direction_ == 1)
+            {
+                aP += aW;
+                bsrc += 2.0f * aW * v_inlet;
+                aW = 0.0f;
+            }
+        }
+        else if(bc.velocityType == OUTLET)
+        {
+            // 出口：速度未知，使用 Neumann 条件（零梯度）
+            aP -= aW;
+            aW = 0.0f;
+        }
+        else if(bc.velocityType == WALL)
+        {
+            // 壁面：速度为零，使用 Dirichlet 条件
+            aP += aW;
+            aW = 0.0f;
+        }
+    }
+
+    // East i = ncx - 1
+    for(int j = 0; j < ncy; ++j)
+    {
+        const auto &bc = boundaryField_.east(j);
+        float &aE = coefMatrix_[j][ncx - 1].aE;
+        float &aP = coefMatrix_[j][ncx - 1].aP;
+        float &bsrc = coefMatrix_[j][ncx - 1].bsrc;
+
+        if(bc.velocityType == INLET)
+        {
+            // 入口：速度已知，使用 Dirichlet 条件
+            float u_inlet = bc.VelocityValue[0];
+            float v_inlet = bc.VelocityValue[1];
+            if(direction_ == 0)
+            {
+                aP += aE;
+                bsrc += 2.0f * aE * u_inlet;
+                aE = 0.0f;
+            }
+            if (direction_ == 1)
+            {
+                aP += aE;
+                bsrc += 2.0f * aE * v_inlet;
+                aE = 0.0f;
+            }
+        }
+        else if(bc.velocityType == OUTLET)
+        {
+            // 出口：速度未知，使用 Neumann 条件（零梯度）
+            aP -= aE;
+            aE = 0.0f;
+        }
+        else if(bc.velocityType == WALL)
+        {
+            // 壁面：速度为零，使用 Dirichlet 条件
+            aP += aE;
+            aE = 0.0f;
+        }
+    }
+
+    // South j = 0
+    for(int i = 0; i < ncx; ++i)
+    {
+        const auto &bc = boundaryField_.south(i);
+        float &aS = coefMatrix_[0][i].aS;
+        float &aP = coefMatrix_[0][i].aP;
+        float &bsrc = coefMatrix_[0][i].bsrc;
+
+        if(bc.velocityType == INLET)
+        {
+            // 入口：速度已知，使用 Dirichlet 条件
+            float u_inlet = bc.VelocityValue[0];
+            float v_inlet = bc.VelocityValue[1];
+            if(direction_ == 0)
+            {
+                aP += aS;
+                bsrc += 2.0f * aS * u_inlet;
+                aS = 0.0f;
+            }
+            if (direction_ == 1)
+            {
+                aP += aS;
+                bsrc += 2.0f * aS * v_inlet;
+                aS = 0.0f;
+            }
+        }
+        else if(bc.velocityType == OUTLET)
+        {
+            // 出口：速度未知，使用 Neumann 条件（零梯度）
+            aP -= aS;
+            aS = 0.0f;
+        }
+        else if(bc.velocityType == WALL)
+        {
+            // 壁面：速度为零，使用 Dirichlet 条件
+            aP += aS;
+            aS = 0.0f;
+        }
+    }
+
+    // North j = ncy - 1
+    for(int i = 0; i < ncx; ++i)
+    {
+        const auto &bc = boundaryField_.north(i);
+        float &aN = coefMatrix_[ncy - 1][i].aN;
+        float &aP = coefMatrix_[ncy - 1][i].aP;
+        float &bsrc = coefMatrix_[ncy - 1][i].bsrc;
+
+        if(bc.velocityType == INLET)
+        {
+            // 入口：速度已知，使用 Dirichlet 条件
+            float u_inlet = bc.VelocityValue[0];
+            float v_inlet = bc.VelocityValue[1];
+            if(direction_ == 0)
+            {
+                aP += aN;
+                bsrc += 2.0f * aN * u_inlet;
+                aN = 0.0f;
+            }
+            if (direction_ == 1)
+            {
+                aP += aN;
+                bsrc += 2.0f * aN * v_inlet;
+                aN = 0.0f;
+            }
+        }
+        else if(bc.velocityType == OUTLET)
+        {
+            // 出口：速度未知，使用 Neumann 条件（零梯度）
+            aP -= aN;
+            aN = 0.0f;
+        }
+        else if(bc.velocityType == WALL)
+        {
+            // 壁面：速度为零，使用 Dirichlet 条件
+            aP += aN;
+            aN = 0.0f;
+        }
+    }
+}
+
 void ScalarEquation::resetCoefficients()
 {
     // 遍历所有单元
@@ -65,24 +239,6 @@ void ScalarEquation::resetCoefficients()
 // ============================================================================
 // 界面通量计算
 // ============================================================================
-
-bool ScalarEquation::isBoundaryFace(int i, int j, Face face) const
-{
-    switch(face)
-    {
-    case Face::East: // 东面 (e)
-        return (i + 1 >= ncx);
-    case Face::West: // 西面 (w)
-        return (i - 1 < 0);
-    case Face::North: // 北面 (n)
-        return (j + 1 >= ncy);
-    case Face::South: // 南面 (s)
-        return (j - 1 < 0);
-    default:
-        throw std::invalid_argument("Invalid face index");
-    }
-}
-
 
 // 计算界面扩散系数（调和平均）
 float ScalarEquation::computeFaceDiffusionCoefficient(float mu_owner, float mu_neighbor,
@@ -222,31 +378,136 @@ void ScalarEquation::addSourceTerm()
 
 void ScalarEquation::addPressureGradient(const ScalarField &pressure)
 {
+    
+    if (direction_ < 0)
+    {
+        fmt::print("Warning: addPressureGradient called for scalar equation. No action taken.\n");
+        return;
+    }
+
     // 获取网格尺寸
     auto meshSize = mesh_.getMeshSize();
     float dx = meshSize[0];
     float dy = meshSize[1];
 
-    // 遍历内部单元
-    for(int j = 1; j < ncy - 1; ++j)
+    float area_x = dy; // x 方向界面面积
+    float area_y = dx; // y 方向界面面积
+    float volyme = dx * dy; // 单元体积
+
+    const auto& bc = boundaryField_;
+
+    for (int j = 0; j < ncy; ++j)
     {
-        for(int i = 1; i < ncx - 1; ++i)
+        for (int i = 0; i < ncx; ++i)
         {
-            if(direction_ == 0)
-            { // u 动量方程：-dp/dx * V
-                float p_e = 0.5f * (pressure(i, j) + pressure(i + 1, j));
-                float p_w = 0.5f * (pressure(i - 1, j) + pressure(i, j));
-                float dpdx = (p_e - p_w) / dx;
-                float volume = dx * dy;
-                coefMatrix_[j][i].bsrc -= dpdx * volume;
+            // x direction pressure gradient
+            if (direction_ == 0)
+            {
+                float pl, pr; // pl = pressure at west face, pr = pressure at east face
+
+                const auto& bc_west = bc.west(j);
+                const auto& bc_east = bc.east(j);
+
+                // West face
+                if (i == 0) 
+                {
+                    // 西边界：根据边界条件计算 pl
+                    if (bc_west.velocityType == INLET || bc_west.velocityType == WALL)
+                    {
+                        pl = pressure(i, j); // 虚拟单元压力等于当前单元压力
+                    }
+                    else if (bc_west.velocityType == OUTLET)
+                    {
+                        pl = bc_west.pressureValue; // 使用指定压力值
+                    }
+                    else
+                    {
+                        pl = pressure(i, j); // 默认处理
+                    }
+                }
+                else
+                {
+                    pl = pressure(i - 1, j); // 内部单元压力
+                }
+
+                if (i = ncx - 1)
+                {
+                    // 东边界：根据边界条件计算 pr
+                    if (bc_east.velocityType == INLET || bc_east.velocityType == WALL)
+                    {
+                        // 壁面/入口：零梯度 ∂p/∂x = 0 → p[ncx] = p[ncx-1]
+                        pr = pressure(i, j); // 虚拟单元压力等于当前单元压力
+                    }
+                    else if (bc_east.velocityType == OUTLET)
+                    {
+                        pr = bc_east.pressureValue; // 使用指定压力值
+                    }
+                    else
+                    {
+                        pr = pressure(i, j); // 默认处理
+                    }
+                }
+                else
+                {
+                    pr = pressure(i + 1, j); // 内部单元压力
+                }
+
+                // 添加压力梯度源项：S = - (pr - pl) / (2 * dx) * volume
+                coefMatrix_[j][i].bsrc += 0.5f * (pr - pl) * area_x;
             }
-            else if(direction_ == 1)
-            { // v 动量方程：-dp/dy * V
-                float p_n = 0.5f * (pressure(i, j) + pressure(i, j + 1));
-                float p_s = 0.5f * (pressure(i, j - 1) + pressure(i, j));
-                float dpdy = (p_n - p_s) / dy;
-                float volume = dx * dy;
-                coefMatrix_[j][i].bsrc -= dpdy * volume;
+
+            if (direction_ == 1)
+            {
+                float pl, pr; // pl = p[j-1] at south face, pr = p[j+1] at north face
+
+                const auto& bc_south = bc.south(i);
+                const auto& bc_north = bc.north(i);
+
+                // South face
+                if (j == 0) 
+                {
+                    // 南边界：根据边界条件计算 pb
+                    if (bc_south.velocityType == INLET || bc_south.velocityType == WALL)
+                    {
+                        pl = pressure(i, j); // 虚拟单元压力等于当前单元压力
+                    }
+                    else if (bc_south.velocityType == OUTLET)
+                    {
+                        pl = bc_south.pressureValue; // 使用指定压力值
+                    }
+                    else
+                    {
+                        pl = pressure(i, j); // 默认处理
+                    }
+                }
+                else
+                {
+                    pl = pressure(i, j - 1); // 内部单元压力
+                }
+
+                if (j == ncy - 1)
+                {
+                    // 北边界：根据边界条件计算 pt
+                    if (bc_north.velocityType == INLET || bc_north.velocityType == WALL)
+                    {
+                        pr = pressure(i, j); // 虚拟单元压力等于当前单元压力
+                    }
+                    else if (bc_north.velocityType == OUTLET)
+                    {
+                        pr = bc_north.pressureValue; // 使用指定压力值
+                    }
+                    else
+                    {
+                        pr = pressure(i, j); // 默认处理
+                    }
+                }
+                else
+                {
+                    pr = pressure(i, j + 1); // 内部单元压力
+                }
+
+                // 添加压力梯度源项：S = - (pr - pl) / (2 * dy) * volume
+                coefMatrix_[j][i].bsrc += 0.5f * (pr - pl) * area_y;
             }
         }
     }
@@ -267,11 +528,6 @@ void ScalarEquation::setRelaxation(float relaxationFactor)
             // relaxationFactor;
         }
     }
-}
-
-void ScalarEquation::applyBoundaries()
-{
-    // TODO: 实现边界条件应用
 }
 
 // ============================================================================

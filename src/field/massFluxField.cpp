@@ -25,21 +25,25 @@ void MassFluxField::initalizeFluxes()
 }
 void MassFluxField::updateFluxes(const StructuredMesh &mesh, const VectorField &vectorField,
                                  const FluidPropertyField &fluidPropertyField,
-                                 const ScalarField *pressure, const ScalarEquation *uEq,
-                                 const ScalarEquation *vEq)
+                                 const BoundaryField &boundaryField, const ScalarField *pressure,
+                                 const ScalarEquation *uEq, const ScalarEquation *vEq)
 {
     for(int j = 0; j < ncy_; ++j)
     {
         for(int i = 0; i < ncx_; ++i)
         {
-            data_[j][i].mE = computeFaceMassFlux(i, j, Face::East, mesh, vectorField,
-                                                 fluidPropertyField, pressure, uEq, vEq);
-            data_[j][i].mW = computeFaceMassFlux(i, j, Face::West, mesh, vectorField,
-                                                 fluidPropertyField, pressure, uEq, vEq);
-            data_[j][i].mN = computeFaceMassFlux(i, j, Face::North, mesh, vectorField,
-                                                 fluidPropertyField, pressure, uEq, vEq);
-            data_[j][i].mS = computeFaceMassFlux(i, j, Face::South, mesh, vectorField,
-                                                 fluidPropertyField, pressure, uEq, vEq);
+            data_[j][i].mE =
+                computeFaceMassFlux(i, j, Face::East, mesh, vectorField, fluidPropertyField,
+                                    boundaryField, pressure, uEq, vEq);
+            data_[j][i].mW =
+                computeFaceMassFlux(i, j, Face::West, mesh, vectorField, fluidPropertyField,
+                                    boundaryField, pressure, uEq, vEq);
+            data_[j][i].mN =
+                computeFaceMassFlux(i, j, Face::North, mesh, vectorField, fluidPropertyField,
+                                    boundaryField, pressure, uEq, vEq);
+            data_[j][i].mS =
+                computeFaceMassFlux(i, j, Face::South, mesh, vectorField, fluidPropertyField,
+                                    boundaryField, pressure, uEq, vEq);
         }
     }
 }
@@ -47,16 +51,85 @@ void MassFluxField::updateFluxes(const StructuredMesh &mesh, const VectorField &
 float MassFluxField::computeFaceMassFlux(int i, int j, Face face, const StructuredMesh &mesh,
                                          const VectorField &vectorField,
                                          const FluidPropertyField &fluidPropertyField,
+                                         const BoundaryField &boundaryField,
                                          const ScalarField *pressure, const ScalarEquation *uEq,
                                          const ScalarEquation *vEq) const
 {
     auto meshSize = mesh.getMeshSize();
+    const auto& bc = boundaryField;
     float dx = meshSize[0];
     float dy = meshSize[1];
     float volume = dx * dy;
     float rho = fluidPropertyField(i, j).rho;
 
     float linearVelocity = 0.0f;
+
+    // 先判断是否在边界，如果在边界，根据边界条件调整线速度计算方式。然后return
+    if (i == 0 && face == Face::West) // XMIN处
+    {   
+        if (bc.west(j).velocityType == INLET)
+        {
+            return rho * bc.west(j).VelocityValue[0] * dy;
+        }
+        else if (bc.west(j).velocityType == OUTLET)
+        {
+            return rho * vectorField.u()(i, j) * dy; // 使用当前单元的速度
+        }
+        else if (bc.west(j).velocityType == WALL)
+        {
+            return 0.0f; // 壁面无流动
+        }
+    }
+
+    if (i == ncx_ - 1 && face == Face::East) // XMAX处
+    {
+        if (bc.east(j).velocityType == INLET)
+        {
+            return rho * bc.east(j).VelocityValue[0] * dy;
+        }
+        else if (bc.east(j).velocityType == OUTLET)
+        {
+            return rho * vectorField.u()(i, j) * dy; // 使用当前单元的速度
+        }
+        else if (bc.east(j).velocityType == WALL)
+        {
+            return 0.0f; // 壁面无流动
+        }
+    }
+
+    if (j == 0 && face == Face::South) // YMIN处
+    {
+        if (bc.south(i).velocityType == INLET)
+        {
+            return rho * bc.south(i).VelocityValue[1] * dx;
+        }
+        else if (bc.south(i).velocityType == OUTLET)
+        {
+            return rho * vectorField.v()(i, j) * dx; // 使用当前单元的速度
+        }
+        else if (bc.south(i).velocityType == WALL)
+        {
+            return 0.0f; // 壁面无流动
+        }
+    }
+
+    if (j == ncy_ - 1 && face == Face::North) // YMAX处
+    {
+        if (bc.north(i).velocityType == INLET)
+        {
+            return rho * bc.north(i).VelocityValue[1] * dx;
+        }
+        else if (bc.north(i).velocityType == OUTLET)
+        {
+            return rho * vectorField.v()(i, j) * dx; // 使用当前单元
+        }
+        else if (bc.north(i).velocityType == WALL)
+        {
+            return 0.0f; // 壁面无流动
+        }
+    }
+
+
     float area = (face == Face::East || face == Face::West) ? dy : dx;
     switch(face)
     {
@@ -203,7 +276,7 @@ float MassFluxField::computeFaceMassFlux(int i, int j, Face face, const Structur
         break;
     }
 
-    // gradP_E = (P_E - P_EE)
+    // 面上的压力梯度
     float gradP_face = 0.0f;
     switch(face)
     {
